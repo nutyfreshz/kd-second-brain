@@ -70,10 +70,16 @@ def parse_model_json(raw: str, evidence: list[EvidenceChunk]) -> dict[str, Any]:
                 )
             )
         else:
+            # Never trust model-authored quote text as the citation payload.
+            # The chunk id is the grounding pointer; display a verbatim excerpt
+            # directly from the retrieved source so citations cannot drift.
+            trusted_quote = source.text.strip()
+            if len(trusted_quote) > 900:
+                trusted_quote = trusted_quote[:900].rstrip() + "…"
             citations.append(
                 Citation(
                     chunk_id=cid,
-                    quote=quote,
+                    quote=trusted_quote,
                     source_id=source.source_id,
                     title=source.title,
                     heading=source.heading,
