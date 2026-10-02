@@ -165,7 +165,7 @@ if prompt:
             conversation_id=st.session_state.conversation_id,
             client_message_id=client_message_id,
             text=prompt,
-            selected_source_ids=tuple(selected),
+            selected_source_ids=(),
         ),
     )
     st.rerun()
