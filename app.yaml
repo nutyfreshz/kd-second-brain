@@ -7,7 +7,7 @@ env:
     valueFrom: openrouter_api_key
 
   - name: OPENROUTER_MODEL
-    value: "qwen/qwen3.5-9b"
+    value: "google/gemini-2.5-flash-lite"
 
   - name: OPENROUTER_FREE_VERIFIED
     value: "false"
@@ -16,7 +16,7 @@ env:
     value: "true"
 
   - name: OPENROUTER_FALLBACK_MODELS
-    value: "google/gemini-2.5-flash-lite"
+    value: "qwen/qwen3.5-9b"
 
   - name: KNOWLEDGE_SOURCE
     value: "drive"
