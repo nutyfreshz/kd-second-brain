@@ -7,7 +7,7 @@ env:
     valueFrom: openrouter_api_key
 
   - name: OPENROUTER_MODEL
-    value: "openai/gpt-oss-120b:free"
+    value: "openai/gpt-oss-20b:free"
 
   - name: OPENROUTER_FREE_VERIFIED
     value: "true"
