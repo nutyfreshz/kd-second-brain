@@ -7,9 +7,12 @@ env:
     valueFrom: openrouter_api_key
 
   - name: OPENROUTER_MODEL
-    value: "openai/gpt-oss-20b:free"
+    value: "qwen/qwen3.5-9b"
 
   - name: OPENROUTER_FREE_VERIFIED
+    value: "false"
+
+  - name: OPENROUTER_PAID_ALLOWED
     value: "true"
 
   - name: KNOWLEDGE_SOURCE
