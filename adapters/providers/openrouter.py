@@ -82,17 +82,6 @@ class OpenRouterProvider:
                                     "additionalProperties": False,
                                 },
                             },
-                            "citations": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "chunk_id": {"type": "string"},
-                                    },
-                                    "required": ["chunk_id"],
-                                    "additionalProperties": False,
-                                },
-                            },
                             "clarification_questions": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -102,7 +91,6 @@ class OpenRouterProvider:
                             "status",
                             "answer_th",
                             "claims",
-                            "citations",
                             "clarification_questions",
                         ],
                         "additionalProperties": False,
