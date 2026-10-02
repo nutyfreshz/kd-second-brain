@@ -6,23 +6,32 @@ from adapters.providers.http_json import post_json
 
 class OpenRouterProvider:
     ALLOWED_MODELS = {
+        "qwen/qwen3.5-9b",
+        "google/gemini-2.5-flash-lite",
         "openai/gpt-oss-20b:free",
         "openai/gpt-oss-120b:free",
     }
 
-    def __init__(self, api_key: str | None, model: str, *, free_verified: bool = False):
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str,
+        *,
+        free_verified: bool = False,
+        paid_allowed: bool = False,
+    ):
         self.api_key = api_key
         self.model = model
         self.free_verified = free_verified
+        self.paid_allowed = paid_allowed
 
     @property
     def enabled(self) -> bool:
-        return bool(
-            self.api_key
-            and self.free_verified
-            and self.model in self.ALLOWED_MODELS
-            and self.model.endswith(":free")
-        )
+        if not self.api_key or self.model not in self.ALLOWED_MODELS:
+            return False
+        if self.model.endswith(":free"):
+            return self.free_verified
+        return self.paid_allowed
 
     @property
     def model_id(self) -> str:
