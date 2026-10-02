@@ -60,6 +60,7 @@ def build_service() -> tuple[Settings, ChatService]:
             settings.openrouter_model,
             free_verified=settings.openrouter_free_verified,
             paid_allowed=settings.openrouter_paid_allowed,
+            fallback_models=settings.openrouter_fallback_models,
         ),
         max_concurrent_inference=settings.max_concurrent_inference,
         system_prompt_path=str(ROOT / "prompts" / "SYSTEM_PROMPT_TH.md"),
