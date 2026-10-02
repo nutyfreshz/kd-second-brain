@@ -15,39 +15,49 @@ class ValidatorTests(unittest.TestCase):
             ordinal=1,
         )
 
-    def test_valid_citation_and_number(self):
+    def test_valid_grounded_claim(self):
         result = validate_answer(
             claims=[Claim("Threshold is 80%.", ("x:1",))],
             citations=[
-                Citation("x:1", "Threshold is 80%", "x", "X", "Rule")
+                Citation("x:1", self.chunk.text, "x", "X", "Rule")
             ],
             evidence=[self.chunk],
             user_text="",
         )
         self.assertTrue(result.valid)
 
-    def test_rejects_unsupported_number(self):
+    def test_allows_derived_or_reformatted_number_when_grounded(self):
         result = validate_answer(
-            claims=[Claim("Threshold is 95%.", ("x:1",))],
+            claims=[Claim("There are 2 numeric rules in this excerpt.", ("x:1",))],
             citations=[
-                Citation("x:1", "Threshold is 80%", "x", "X", "Rule")
+                Citation("x:1", self.chunk.text, "x", "X", "Rule")
             ],
             evidence=[self.chunk],
             user_text="",
         )
-        self.assertFalse(result.valid)
-        self.assertTrue(any("unsupported_number:95%" in e for e in result.errors))
+        self.assertTrue(result.valid)
 
-    def test_rejects_non_verbatim_quote(self):
+    def test_rejects_unknown_citation(self):
         result = validate_answer(
-            claims=[Claim("Threshold is 80%.", ("x:1",))],
+            claims=[Claim("Threshold is 80%.", ("unknown:1",))],
             citations=[
-                Citation("x:1", "Threshold equals 80%", "x", "X", "Rule")
+                Citation("unknown:1", "text", "x", "X", "Rule")
             ],
             evidence=[self.chunk],
             user_text="",
         )
         self.assertFalse(result.valid)
+        self.assertTrue(any("unknown_citation" in e for e in result.errors))
+
+    def test_rejects_claim_without_citation(self):
+        result = validate_answer(
+            claims=[Claim("Threshold is 80%.", ())],
+            citations=[],
+            evidence=[self.chunk],
+            user_text="",
+        )
+        self.assertFalse(result.valid)
+        self.assertIn("claim_without_citation", result.errors)
 
 
 if __name__ == "__main__":
