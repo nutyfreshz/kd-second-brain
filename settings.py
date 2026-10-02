@@ -46,7 +46,7 @@ class Settings:
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
             gemini_free_verified=_bool("GEMINI_FREE_VERIFIED", False),
             openrouter_api_key=os.getenv("OPENROUTER_API_KEY") or None,
-            openrouter_model=os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-20b:free"),
+            openrouter_model=os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite"),
             openrouter_free_verified=_bool("OPENROUTER_FREE_VERIFIED", False),
             openrouter_paid_allowed=_bool("OPENROUTER_PAID_ALLOWED", False),
             openrouter_fallback_models=tuple(
