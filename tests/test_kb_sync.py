@@ -61,7 +61,7 @@ class KBSyncTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td)
             p.joinpath("canonical.md").write_text(
-                "---\\ndoc_id: rules\\nstatus: canonical\\nversion: v1\\n---\\n# Rules\\ncanonical content",
+                "---\ndoc_id: rules\nstatus: canonical\nversion: v1\n---\n# Rules\ncanonical content",
                 encoding="utf-8",
             )
             manager = KnowledgeManager(
