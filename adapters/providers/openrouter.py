@@ -5,7 +5,10 @@ from adapters.providers.http_json import post_json
 
 
 class OpenRouterProvider:
-    ALLOWED_MODELS = {"openai/gpt-oss-120b:free"}
+    ALLOWED_MODELS = {
+        "openai/gpt-oss-20b:free",
+        "openai/gpt-oss-120b:free",
+    }
 
     def __init__(self, api_key: str | None, model: str, *, free_verified: bool = False):
         self.api_key = api_key
