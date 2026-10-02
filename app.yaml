@@ -11,3 +11,9 @@ env:
 
   - name: OPENROUTER_FREE_VERIFIED
     value: "true"
+
+  - name: KNOWLEDGE_SOURCE
+    value: "drive"
+
+  - name: GOOGLE_DRIVE_PUBLISHED_FOLDER_ID
+    value: "1zjXz_usBjV0GvGBVb9L19HcGLBCPV8yw"
