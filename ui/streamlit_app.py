@@ -62,6 +62,10 @@ def build_service() -> tuple[Settings, ChatService]:
         ),
         max_concurrent_inference=settings.max_concurrent_inference,
         system_prompt_path=str(ROOT / "prompts" / "SYSTEM_PROMPT_TH.md"),
+        allow_external_llm_for_all_evidence=(
+            settings.knowledge_source == "drive"
+            and settings.drive_external_llm_allow_all
+        ),
     )
     return settings, service
 
@@ -114,6 +118,10 @@ with st.sidebar:
                 + ("enabled" if service.fallback and service.fallback.enabled else "disabled / not verified")
             )
             st.write("Free quota: ยังไม่ยืนยันจนกว่าจะ run credential check")
+            st.write(
+                "Drive external LLM policy: "
+                + ("allow all synced knowledge" if settings.drive_external_llm_allow_all else "per-document")
+            )
             if snapshot:
                 st.write(f"Published sources: {len(snapshot.sources)}")
                 st.write(f"Authority conflicts: {len(snapshot.conflicts)}")
