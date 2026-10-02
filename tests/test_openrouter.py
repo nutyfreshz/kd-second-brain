@@ -52,6 +52,38 @@ class OpenRouterProviderTests(unittest.TestCase):
         self.assertFalse(disabled.enabled)
         self.assertTrue(enabled.enabled)
 
+    @patch("adapters.providers.openrouter.post_json")
+    def test_uses_model_fallback_chain_for_paid_uat(self, post_json):
+        post_json.return_value = {
+            "model": "qwen/qwen3.5-9b",
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"status":"not_found","answer_th":"ไม่พบข้อมูล",'
+                            '"claims":[],"citations":[],"clarification_questions":[]}'
+                        )
+                    }
+                }
+            ],
+        }
+        provider = OpenRouterProvider(
+            "test-key",
+            "qwen/qwen3.5-9b",
+            paid_allowed=True,
+            fallback_models=("google/gemini-2.5-flash-lite",),
+        )
+
+        result = provider.generate(system_prompt="system", user_prompt="question")
+
+        payload = post_json.call_args.args[1]
+        self.assertEqual(
+            payload["models"],
+            ["qwen/qwen3.5-9b", "google/gemini-2.5-flash-lite"],
+        )
+        self.assertNotIn("model", payload)
+        self.assertEqual(result.model, "qwen/qwen3.5-9b")
+
 
 if __name__ == "__main__":
     unittest.main()
