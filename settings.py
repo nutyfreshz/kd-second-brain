@@ -27,6 +27,7 @@ class Settings:
     drive_published_folder_id: str | None
     google_service_account_json: str | None
     google_service_account_file: str | None
+    drive_external_llm_allow_all: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -48,4 +49,5 @@ class Settings:
             drive_published_folder_id=os.getenv("GOOGLE_DRIVE_PUBLISHED_FOLDER_ID") or None,
             google_service_account_json=os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or None,
             google_service_account_file=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE") or None,
+            drive_external_llm_allow_all=_bool("DRIVE_EXTERNAL_LLM_ALLOW_ALL", False),
         )
