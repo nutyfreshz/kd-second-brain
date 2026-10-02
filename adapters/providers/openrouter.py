@@ -48,7 +48,7 @@ class OpenRouterProvider:
             )
         payload = {
             "temperature": 0.1,
-            "max_tokens": 1800,
+            "max_tokens": 1000,
             "provider": {"require_parameters": True},
             "messages": [
                 {"role": "system", "content": system_prompt},
