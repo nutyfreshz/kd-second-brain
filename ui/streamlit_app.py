@@ -86,16 +86,9 @@ snapshot = service.knowledge.snapshot
 sources = service.list_sources(identity)
 
 with st.sidebar:
-    st.title("Sources")
+    st.title("AIS Knowledge")
     st.caption(f"ผู้ใช้: {identity.username}")
-    selected = st.multiselect(
-        "ใช้เอกสาร",
-        options=[s.source_id for s in sources],
-        default=[s.source_id for s in sources],
-        format_func=lambda sid: next(
-            (f"{s.title} · {s.version}" for s in sources if s.source_id == sid), sid
-        ),
-    )
+    st.caption(f"ค้นอัตโนมัติจากคลังความรู้ทั้งหมด · {len(sources)} sources")
 
     if st.button("New chat", use_container_width=True):
         st.session_state.conversation_id = service.create_conversation(identity)
@@ -134,7 +127,7 @@ with st.sidebar:
         st.warning("ยังไม่มี active knowledge snapshot")
 
 st.title("AIS Knowledge Notebook")
-st.caption("ถาม ตอบ เปรียบเทียบ และเชื่อมโยงจาก MD ที่เลือก")
+st.caption("ถาม ตอบ เปรียบเทียบ และเชื่อมโยงจากคลังความรู้ที่ผ่านการ review")
 
 if not sources:
     st.info(
