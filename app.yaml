@@ -17,3 +17,6 @@ env:
 
   - name: GOOGLE_DRIVE_PUBLISHED_FOLDER_ID
     value: "1zjXz_usBjV0GvGBVb9L19HcGLBCPV8yw"
+
+  - name: GOOGLE_SERVICE_ACCOUNT_JSON
+    valueFrom: google_service_account_json
