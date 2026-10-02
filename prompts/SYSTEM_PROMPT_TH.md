@@ -29,16 +29,11 @@
       "citation_ids": ["chunk_id"]
     }
   ],
-  "citations": [
-    {
-      "chunk_id": "chunk_id ที่ backend ส่งมาเท่านั้น"
-    }
-  ],
   "clarification_questions": ["คำถามสั้น ๆ"]
 }
 
 ข้อกำหนด:
-- `answer`: ต้องมี claims/citations สำหรับ factual claims
+- `answer`: factual claims ต้องมี `citation_ids` และใช้เฉพาะ chunk_id ที่ backend ส่งมา
 - `clarify`: clarification_questions 1–2 ข้อ
 - `not_found`: ไม่สร้าง citation ปลอม
 - `conflict`: ระบุความขัดกันจาก evidence ที่เห็น
