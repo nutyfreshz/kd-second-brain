@@ -1,0 +1,22 @@
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+.idea/
+.vscode/
+
+# Never commit internal knowledge or credentials.
+knowledge/published/*
+!knowledge/published/.gitkeep
+*.pem
+*.key
+*service-account*.json
+credentials*.json
+secrets*.json
