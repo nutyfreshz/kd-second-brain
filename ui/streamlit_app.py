@@ -59,6 +59,7 @@ def build_service() -> tuple[Settings, ChatService]:
             settings.openrouter_api_key,
             settings.openrouter_model,
             free_verified=settings.openrouter_free_verified,
+            paid_allowed=settings.openrouter_paid_allowed,
         ),
         max_concurrent_inference=settings.max_concurrent_inference,
         system_prompt_path=str(ROOT / "prompts" / "SYSTEM_PROMPT_TH.md"),
@@ -116,6 +117,11 @@ with st.sidebar:
             st.write(
                 "OpenRouter fallback: "
                 + ("enabled" if service.fallback and service.fallback.enabled else "disabled / not verified")
+            )
+            st.write(f"OpenRouter model: `{settings.openrouter_model}`")
+            st.write(
+                "Paid model access: "
+                + ("allowed" if settings.openrouter_paid_allowed else "disabled")
             )
             st.write("Free quota: ยังไม่ยืนยันจนกว่าจะ run credential check")
             st.write(
