@@ -215,6 +215,30 @@ class ChatService:
                     system_prompt=system_prompt, user_prompt=user_prompt
                 )
             except ProviderError as exc:
+                if exc.code == "http_402":
+                    response = self._search_only_response(snapshot, evidence)
+                    response.status = AnswerStatus.PROVIDER_UNAVAILABLE
+                    response.answer_th = (
+                        "OpenRouter ปฏิเสธ paid inference เนื่องจาก credit/budget ไม่พร้อม "
+                        "กรุณาตรวจ Credits และ API-key spending limit แล้วลองใหม่"
+                    )
+                    return self._save_response(identity, request, response)
+                if exc.code in {"http_401", "http_403"}:
+                    response = self._search_only_response(snapshot, evidence)
+                    response.status = AnswerStatus.PROVIDER_UNAVAILABLE
+                    response.answer_th = (
+                        "OpenRouter API key ไม่ผ่าน authentication/authorization "
+                        "กรุณาตรวจ Secret และสิทธิ์ของ API key"
+                    )
+                    return self._save_response(identity, request, response)
+                if exc.code == "http_404":
+                    response = self._search_only_response(snapshot, evidence)
+                    response.status = AnswerStatus.PROVIDER_UNAVAILABLE
+                    response.answer_th = (
+                        "OpenRouter ไม่พบ endpoint ที่ใช้ได้สำหรับ model/policy ปัจจุบัน "
+                        "กรุณาตรวจ model availability และ OpenRouter privacy/provider restrictions"
+                    )
+                    return self._save_response(identity, request, response)
                 if exc.safety_block:
                     response = self._search_only_response(snapshot, evidence)
                     response.status = AnswerStatus.PROVIDER_UNAVAILABLE
