@@ -33,11 +33,68 @@ class OpenRouterProvider:
         payload = {
             "model": self.model,
             "temperature": 0.1,
+            "max_tokens": 1800,
+            "provider": {"require_parameters": True},
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "response_format": {"type": "json_object"},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "ais_knowledge_answer",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "status": {
+                                "type": "string",
+                                "enum": ["answer", "clarify", "not_found", "conflict"],
+                            },
+                            "answer_th": {"type": "string"},
+                            "claims": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "text": {"type": "string"},
+                                        "citation_ids": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                        },
+                                    },
+                                    "required": ["text", "citation_ids"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "citations": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "chunk_id": {"type": "string"},
+                                        "quote": {"type": "string"},
+                                    },
+                                    "required": ["chunk_id", "quote"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "clarification_questions": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": [
+                            "status",
+                            "answer_th",
+                            "claims",
+                            "citations",
+                            "clarification_questions",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            },
         }
         data = post_json(
             "https://openrouter.ai/api/v1/chat/completions",
