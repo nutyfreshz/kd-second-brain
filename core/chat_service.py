@@ -192,7 +192,13 @@ class ChatService:
         provider = self._first_enabled_provider()
         if provider is None or not external_allowed:
             response = self._search_only_response(snapshot, evidence)
-            if provider is not None and not external_allowed:
+            if provider is None:
+                response.status = AnswerStatus.PROVIDER_UNAVAILABLE
+                response.answer_th = (
+                    "ระบบค้นหลักฐานได้ แต่ AI provider ยังไม่พร้อมใช้งาน "
+                    "จึงยังไม่สามารถสังเคราะห์คำตอบแบบสนทนาได้"
+                )
+            else:
                 response.answer_th = (
                     "พบหลักฐานแล้ว แต่เอกสารชุดนี้ยังไม่ได้อนุญาตให้ส่งไป external LLM "
                     "จึงแสดงเฉพาะหลักฐาน"
@@ -227,6 +233,10 @@ class ChatService:
                 if fallback is None:
                     response = self._search_only_response(snapshot, evidence)
                     response.status = AnswerStatus.PROVIDER_UNAVAILABLE
+                    response.answer_th = (
+                        "ระบบค้นหลักฐานได้ แต่ AI provider ตอบคำขอไม่สำเร็จ "
+                        "จึงยังไม่สามารถสังเคราะห์คำตอบแบบสนทนาได้"
+                    )
                     return self._save_response(identity, request, response)
                 try:
                     result = fallback.generate(
@@ -235,6 +245,10 @@ class ChatService:
                 except ProviderError:
                     response = self._search_only_response(snapshot, evidence)
                     response.status = AnswerStatus.PROVIDER_UNAVAILABLE
+                    response.answer_th = (
+                        "ระบบค้นหลักฐานได้ แต่ AI providers ไม่พร้อมใช้งาน "
+                        "จึงยังไม่สามารถสังเคราะห์คำตอบแบบสนทนาได้"
+                    )
                     return self._save_response(identity, request, response)
 
         try:
