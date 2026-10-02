@@ -31,8 +31,7 @@
   ],
   "citations": [
     {
-      "chunk_id": "chunk_id ที่ backend ส่งมาเท่านั้น",
-      "quote": "ข้อความตรงจาก chunk เดิม"
+      "chunk_id": "chunk_id ที่ backend ส่งมาเท่านั้น"
     }
   ],
   "clarification_questions": ["คำถามสั้น ๆ"]
