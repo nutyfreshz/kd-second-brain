@@ -40,6 +40,7 @@ class ChatService:
         fallback: LLMProvider | None = None,
         max_concurrent_inference: int = 2,
         system_prompt_path: str = "prompts/SYSTEM_PROMPT_TH.md",
+        allow_external_llm_for_all_evidence: bool = False,
     ):
         self.knowledge = knowledge
         self.store = store
@@ -50,6 +51,7 @@ class ChatService:
         self._lock = threading.Lock()
         self._cache: dict[str, ChatResponse] = {}
         self.system_prompt_path = Path(system_prompt_path)
+        self.allow_external_llm_for_all_evidence = allow_external_llm_for_all_evidence
 
     def create_conversation(self, identity: Identity) -> str:
         return self.store.create(identity).conversation_id
@@ -181,7 +183,7 @@ class ChatService:
 
         evidence_source_ids = {c.source_id for c in evidence}
         meta_by_id = {s.source_id: s for s in snapshot.sources}
-        external_allowed = all(
+        external_allowed = self.allow_external_llm_for_all_evidence or all(
             meta_by_id[sid].external_llm_allowed
             for sid in evidence_source_ids
             if sid in meta_by_id
