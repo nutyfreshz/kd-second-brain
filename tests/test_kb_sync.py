@@ -57,6 +57,27 @@ class KBSyncTests(unittest.TestCase):
             self.assertEqual(conflicts, ())
             self.assertEqual(len(allowed), 1)
 
+    def test_canonical_document_is_included_and_authoritative(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td)
+            p.joinpath("canonical.md").write_text(
+                "---\\ndoc_id: rules\\nstatus: canonical\\nversion: v1\\n---\\n# Rules\\ncanonical content",
+                encoding="utf-8",
+            )
+            manager = KnowledgeManager(
+                LocalKnowledgeSource(td),
+                semantic_enabled=False,
+                embedding_model="unused",
+            )
+            snap = manager.sync()
+            self.assertEqual(len(snap.sources), 1)
+            self.assertEqual(snap.sources[0].status, "canonical")
+            allowed, conflicts = resolve_authoritative_sources(
+                snap.sources, date(2026, 10, 2)
+            )
+            self.assertEqual(conflicts, ())
+            self.assertEqual(allowed, {"canonical.md"})
+
 
 if __name__ == "__main__":
     unittest.main()
