@@ -35,7 +35,7 @@ class ChatServiceTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_degrades_to_search_only_without_provider(self):
+    def test_reports_provider_unavailable_without_provider(self):
         response = self.service.send_message(
             self.identity,
             ChatRequest(
@@ -44,7 +44,7 @@ class ChatServiceTests(unittest.TestCase):
                 text="P2 requires how many completed jobs?",
             ),
         )
-        self.assertEqual(response.status, AnswerStatus.SEARCH_ONLY)
+        self.assertEqual(response.status, AnswerStatus.PROVIDER_UNAVAILABLE)
         self.assertTrue(response.citations)
 
     def test_duplicate_client_id_does_not_append_second_user_turn(self):
