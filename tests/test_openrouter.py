@@ -38,6 +38,20 @@ class OpenRouterProviderTests(unittest.TestCase):
         self.assertTrue(payload["provider"]["require_parameters"])
         self.assertEqual(payload["model"], "openai/gpt-oss-120b:free")
 
+    def test_paid_qwen_requires_explicit_paid_gate(self):
+        disabled = OpenRouterProvider(
+            "test-key",
+            "qwen/qwen3.5-9b",
+            paid_allowed=False,
+        )
+        enabled = OpenRouterProvider(
+            "test-key",
+            "qwen/qwen3.5-9b",
+            paid_allowed=True,
+        )
+        self.assertFalse(disabled.enabled)
+        self.assertTrue(enabled.enabled)
+
 
 if __name__ == "__main__":
     unittest.main()
