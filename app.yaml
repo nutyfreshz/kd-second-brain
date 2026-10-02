@@ -2,3 +2,12 @@ command: ['streamlit', 'run', 'ui/streamlit_app.py']
 env:
   - name: STREAMLIT_GATHER_USAGE_STATS
     value: "false"
+
+  - name: OPENROUTER_API_KEY
+    valueFrom: openrouter_api_key
+
+  - name: OPENROUTER_MODEL
+    value: "openai/gpt-oss-120b:free"
+
+  - name: OPENROUTER_FREE_VERIFIED
+    value: "true"
