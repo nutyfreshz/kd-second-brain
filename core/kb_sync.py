@@ -7,7 +7,7 @@ from pathlib import Path
 import threading
 from typing import Protocol
 
-from core.md_parser import ParsedDocument, is_effective, parse_markdown
+from core.md_parser import ParsedDocument, is_active_status, is_effective, parse_markdown
 from core.retrieval import HybridRetriever
 from core.schemas import EvidenceChunk, SourceMeta
 
@@ -75,7 +75,7 @@ class KnowledgeManager:
             parsed: list[ParsedDocument] = []
             for raw in raw_files:
                 doc = parse_markdown(raw.source_id, raw.text, updated_at=raw.updated_at, origin_url=raw.origin_url)
-                if doc.meta.status == "published":
+                if is_active_status(doc.meta.status):
                     parsed.append(doc)
             sources = tuple(p.meta for p in parsed)
             chunks = tuple(c for p in parsed for c in p.chunks)
