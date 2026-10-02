@@ -44,7 +44,7 @@ class Settings:
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
             gemini_free_verified=_bool("GEMINI_FREE_VERIFIED", False),
             openrouter_api_key=os.getenv("OPENROUTER_API_KEY") or None,
-            openrouter_model=os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free"),
+            openrouter_model=os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-20b:free"),
             openrouter_free_verified=_bool("OPENROUTER_FREE_VERIFIED", False),
             drive_published_folder_id=os.getenv("GOOGLE_DRIVE_PUBLISHED_FOLDER_ID") or None,
             google_service_account_json=os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or None,
