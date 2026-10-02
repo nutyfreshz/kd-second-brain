@@ -25,6 +25,7 @@ class Settings:
     openrouter_model: str
     openrouter_free_verified: bool
     openrouter_paid_allowed: bool
+    openrouter_fallback_models: tuple[str, ...]
     drive_published_folder_id: str | None
     google_service_account_json: str | None
     google_service_account_file: str | None
@@ -48,6 +49,11 @@ class Settings:
             openrouter_model=os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-20b:free"),
             openrouter_free_verified=_bool("OPENROUTER_FREE_VERIFIED", False),
             openrouter_paid_allowed=_bool("OPENROUTER_PAID_ALLOWED", False),
+            openrouter_fallback_models=tuple(
+                x.strip()
+                for x in os.getenv("OPENROUTER_FALLBACK_MODELS", "").split(",")
+                if x.strip()
+            ),
             drive_published_folder_id=os.getenv("GOOGLE_DRIVE_PUBLISHED_FOLDER_ID") or None,
             google_service_account_json=os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or None,
             google_service_account_file=os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE") or None,
