@@ -52,40 +52,6 @@ def parse_model_json(raw: str, evidence: list[EvidenceChunk]) -> dict[str, Any]:
         raise ValueError("invalid_model_status")
     status = ALLOWED_MODEL_STATUSES[status_raw]
 
-    by_chunk = {c.chunk_id: c for c in evidence}
-    citations: list[Citation] = []
-    for item in data.get("citations") or []:
-        cid = str(item.get("chunk_id") or "")
-        quote = str(item.get("quote") or "")
-        source = by_chunk.get(cid)
-        if source is None:
-            # Keep invalid ID; validator will fail closed.
-            citations.append(
-                Citation(
-                    chunk_id=cid,
-                    quote=quote,
-                    source_id="",
-                    title="",
-                    heading="",
-                )
-            )
-        else:
-            # Never trust model-authored quote text as the citation payload.
-            # The chunk id is the grounding pointer; display a verbatim excerpt
-            # directly from the retrieved source so citations cannot drift.
-            trusted_quote = source.text.strip()
-            if len(trusted_quote) > 900:
-                trusted_quote = trusted_quote[:900].rstrip() + "…"
-            citations.append(
-                Citation(
-                    chunk_id=cid,
-                    quote=trusted_quote,
-                    source_id=source.source_id,
-                    title=source.title,
-                    heading=source.heading,
-                )
-            )
-
     claims = [
         Claim(
             text=str(item.get("text") or ""),
@@ -94,6 +60,50 @@ def parse_model_json(raw: str, evidence: list[EvidenceChunk]) -> dict[str, Any]:
         for item in (data.get("claims") or [])
         if str(item.get("text") or "").strip()
     ]
+
+    # Citation IDs are authored once, on claims. The backend derives the display
+    # citations directly from retrieved evidence, avoiding model-side drift between
+    # claims[] and a second citations[] structure.
+    requested_ids: list[str] = []
+    for claim in claims:
+        for cid in claim.citation_ids:
+            if cid not in requested_ids:
+                requested_ids.append(cid)
+
+    # Tolerate the old top-level citations shape during rolling deployments.
+    for item in data.get("citations") or []:
+        cid = str(item.get("chunk_id") or "")
+        if cid and cid not in requested_ids:
+            requested_ids.append(cid)
+
+    by_chunk = {c.chunk_id: c for c in evidence}
+    citations: list[Citation] = []
+    for cid in requested_ids:
+        source = by_chunk.get(cid)
+        if source is None:
+            citations.append(
+                Citation(
+                    chunk_id=cid,
+                    quote="",
+                    source_id="",
+                    title="",
+                    heading="",
+                )
+            )
+            continue
+        trusted_quote = source.text.strip()
+        if len(trusted_quote) > 900:
+            trusted_quote = trusted_quote[:900].rstrip() + "…"
+        citations.append(
+            Citation(
+                chunk_id=cid,
+                quote=trusted_quote,
+                source_id=source.source_id,
+                title=source.title,
+                heading=source.heading,
+            )
+        )
+
     clarifications = [
         str(x).strip()
         for x in (data.get("clarification_questions") or [])
