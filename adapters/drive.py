@@ -6,8 +6,11 @@ from typing import Any
 from core.kb_sync import RawKnowledgeFile
 
 
+_FOLDER_MIME = "application/vnd.google-apps.folder"
+
+
 class GoogleDriveKnowledgeSource:
-    """Read-only adapter for one explicit published folder."""
+    """Read-only adapter for one explicit published Drive tree."""
 
     def __init__(
         self,
@@ -43,30 +46,51 @@ class GoogleDriveKnowledgeSource:
             )
         return build("drive", "v3", credentials=creds, cache_discovery=False)
 
-    def read_all(self) -> list[RawKnowledgeFile]:
-        service = self._service()
+    def _list_children(self, service, folder_id: str) -> list[dict[str, Any]]:
         page_token = None
-        out: list[RawKnowledgeFile] = []
-        query = (
-            f"'{self.folder_id}' in parents and trashed = false "
-            "and mimeType != 'application/vnd.google-apps.folder'"
-        )
+        items: list[dict[str, Any]] = []
+        query = f"'{folder_id}' in parents and trashed = false"
         while True:
             result = (
                 service.files()
                 .list(
                     q=query,
-                    fields="nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink)",
+                    fields=(
+                        "nextPageToken,"
+                        "files(id,name,mimeType,modifiedTime,webViewLink)"
+                    ),
                     pageToken=page_token,
                     pageSize=1000,
                 )
                 .execute()
             )
-            for item in result.get("files", []):
+            items.extend(result.get("files", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                return items
+
+    def read_all(self) -> list[RawKnowledgeFile]:
+        service = self._service()
+        out: list[RawKnowledgeFile] = []
+        pending = [self.folder_id]
+        visited: set[str] = set()
+
+        while pending:
+            folder_id = pending.pop()
+            if folder_id in visited:
+                continue
+            visited.add(folder_id)
+
+            for item in self._list_children(service, folder_id):
+                if item.get("mimeType") == _FOLDER_MIME:
+                    pending.append(item["id"])
+                    continue
+
                 name = item.get("name", "")
                 mime = item.get("mimeType", "")
                 if not name.lower().endswith(".md") and mime != "text/markdown":
                     continue
+
                 data = service.files().get_media(fileId=item["id"]).execute()
                 text = data.decode("utf-8") if isinstance(data, bytes) else str(data)
                 out.append(
@@ -77,7 +101,5 @@ class GoogleDriveKnowledgeSource:
                         origin_url=item.get("webViewLink"),
                     )
                 )
-            page_token = result.get("nextPageToken")
-            if not page_token:
-                break
+
         return out
