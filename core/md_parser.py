@@ -9,6 +9,7 @@ from typing import Iterable
 from core.schemas import EvidenceChunk, SourceMeta
 
 _FRONTMATTER_BOUNDARY = "---"
+_ACTIVE_STATUSES = {"published", "canonical"}
 
 @dataclass(frozen=True)
 class ParsedDocument:
@@ -140,8 +141,11 @@ def parse_markdown(source_id: str, text: str, *, updated_at: str = "", origin_ur
             ordinal += 1
     return ParsedDocument(meta=meta, content=content, chunks=tuple(chunks))
 
+def is_active_status(status: str) -> bool:
+    return status.strip().lower() in _ACTIVE_STATUSES
+
 def is_effective(meta: SourceMeta, as_of: date | None) -> bool:
-    if meta.status != "published":
+    if not is_active_status(meta.status):
         return False
     if as_of is None:
         return True
