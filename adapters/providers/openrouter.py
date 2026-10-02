@@ -88,9 +88,8 @@ class OpenRouterProvider:
                                     "type": "object",
                                     "properties": {
                                         "chunk_id": {"type": "string"},
-                                        "quote": {"type": "string"},
                                     },
-                                    "required": ["chunk_id", "quote"],
+                                    "required": ["chunk_id"],
                                     "additionalProperties": False,
                                 },
                             },
