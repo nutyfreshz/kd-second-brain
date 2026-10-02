@@ -19,11 +19,15 @@ class OpenRouterProvider:
         *,
         free_verified: bool = False,
         paid_allowed: bool = False,
+        fallback_models: tuple[str, ...] = (),
     ):
         self.api_key = api_key
         self.model = model
         self.free_verified = free_verified
         self.paid_allowed = paid_allowed
+        self.fallback_models = tuple(
+            m for m in fallback_models if m in self.ALLOWED_MODELS and m != model
+        )
 
     @property
     def enabled(self) -> bool:
@@ -43,7 +47,6 @@ class OpenRouterProvider:
                 "OpenRouter is not configured.", code="not_configured", retryable=False
             )
         payload = {
-            "model": self.model,
             "temperature": 0.1,
             "max_tokens": 1800,
             "provider": {"require_parameters": True},
@@ -108,6 +111,10 @@ class OpenRouterProvider:
                 },
             },
         }
+        if self.fallback_models:
+            payload["models"] = [self.model, *self.fallback_models]
+        else:
+            payload["model"] = self.model
         data = post_json(
             "https://openrouter.ai/api/v1/chat/completions",
             payload,
@@ -124,7 +131,7 @@ class OpenRouterProvider:
             ) from exc
         return GenerationResult(
             text=text,
-            model=self.model,
+            model=str(data.get("model") or self.model),
             provider="openrouter",
             usage=data.get("usage"),
         )
