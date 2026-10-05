@@ -1,0 +1,140 @@
+{
+  "scope": "Synthetic lexical diagnostics; not live LLM or NotebookLM parity",
+  "current": {
+    "quality": {
+      "passed": 9,
+      "total": 9,
+      "cases": [
+        {
+          "query": "ซ่อมเสร็จภายในกี่ชั่วโมง",
+          "expected": "repair",
+          "actual": "repair",
+          "passed": true
+        },
+        {
+          "query": "นัดหมายติดตั้ง",
+          "expected": "install",
+          "actual": "install",
+          "passed": true
+        },
+        {
+          "query": "P2 accident",
+          "expected": "p2",
+          "actual": "p2",
+          "passed": true
+        },
+        {
+          "query": "P1 review",
+          "expected": "p1",
+          "actual": "p1",
+          "passed": true
+        },
+        {
+          "query": "Repeat fault 30 days",
+          "expected": "repeat",
+          "actual": "repeat",
+          "passed": true
+        },
+        {
+          "query": "CSI survey regional average",
+          "expected": "csi",
+          "actual": "csi",
+          "passed": true
+        },
+        {
+          "query": "repair SLA",
+          "expected": "selected",
+          "actual": "selected",
+          "passed": true
+        },
+        {
+          "query": "repair SLA",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        },
+        {
+          "query": "zzzzunknown",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        }
+      ]
+    },
+    "latency": {
+      "chunks": 5000,
+      "queries": 40,
+      "median_ms": 0.004,
+      "p95_ms": 0.006
+    }
+  },
+  "baseline_revision": "82f1fc4",
+  "baseline": {
+    "quality": {
+      "passed": 8,
+      "total": 9,
+      "cases": [
+        {
+          "query": "ซ่อมเสร็จภายในกี่ชั่วโมง",
+          "expected": "repair",
+          "actual": "repair",
+          "passed": true
+        },
+        {
+          "query": "นัดหมายติดตั้ง",
+          "expected": "install",
+          "actual": "install",
+          "passed": true
+        },
+        {
+          "query": "P2 accident",
+          "expected": "p2",
+          "actual": "p2",
+          "passed": true
+        },
+        {
+          "query": "P1 review",
+          "expected": "p1",
+          "actual": "p1",
+          "passed": true
+        },
+        {
+          "query": "Repeat fault 30 days",
+          "expected": "repeat",
+          "actual": "repeat",
+          "passed": true
+        },
+        {
+          "query": "CSI survey regional average",
+          "expected": "csi",
+          "actual": "csi",
+          "passed": true
+        },
+        {
+          "query": "repair SLA",
+          "expected": "selected",
+          "actual": null,
+          "passed": false
+        },
+        {
+          "query": "repair SLA",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        },
+        {
+          "query": "zzzzunknown",
+          "expected": null,
+          "actual": null,
+          "passed": true
+        }
+      ]
+    },
+    "latency": {
+      "chunks": 5000,
+      "queries": 40,
+      "median_ms": 0.657,
+      "p95_ms": 0.793
+    }
+  }
+}

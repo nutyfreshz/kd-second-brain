@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 
 class AnswerStatus(str, Enum):
     ANSWER = "answer"
@@ -82,6 +82,10 @@ class Message:
     client_message_id: str | None = None
     selected_source_ids: tuple[str, ...] = ()
     clarification_questions: list[str] = field(default_factory=list)
+    claims: list[Claim] = field(default_factory=list)
+    snapshot_id: str = ""
+    model_used: str | None = None
+    limited_mode: bool = False
 
 @dataclass
 class Conversation:
@@ -97,7 +101,7 @@ class ChatRequest:
     conversation_id: str
     client_message_id: str
     text: str
-    selected_source_ids: tuple[str, ...] = ()
+    selected_source_ids: tuple[str, ...] | None = None
 
 @dataclass
 class ChatResponse:

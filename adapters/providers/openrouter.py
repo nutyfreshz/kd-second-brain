@@ -26,7 +26,9 @@ class OpenRouterProvider:
         self.free_verified = free_verified
         self.paid_allowed = paid_allowed
         self.fallback_models = tuple(
-            m for m in fallback_models if m in self.ALLOWED_MODELS and m != model
+            m for m in dict.fromkeys(fallback_models)
+            if m in self.ALLOWED_MODELS and m != model
+            and (free_verified if m.endswith(":free") else paid_allowed)
         )
 
     @property
@@ -48,7 +50,7 @@ class OpenRouterProvider:
             )
         payload = {
             "temperature": 0.1,
-            "max_tokens": 1000,
+            "max_tokens": 2400,
             "provider": {"require_parameters": True},
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -116,6 +118,9 @@ class OpenRouterProvider:
                 code="bad_response_shape",
                 retryable=False,
             ) from exc
+        if choice.get("finish_reason") in {"length", "content_filter"}:
+            raise ProviderError("Incomplete provider response.", code="incomplete_response",
+                                safety_block=choice.get("finish_reason") == "content_filter")
         return GenerationResult(
             text=text,
             model=str(data.get("model") or self.model),

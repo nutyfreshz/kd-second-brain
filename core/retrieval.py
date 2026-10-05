@@ -4,11 +4,13 @@ from collections import Counter, defaultdict
 import math
 import re
 from typing import Iterable
+from functools import lru_cache
+import threading
 
 from core.schemas import EvidenceChunk
 
 
-_TOKEN_RE = re.compile(r"[A-Za-z]+(?:[-_/][A-Za-z0-9]+)*|\d+(?:\.\d+)?%?|[\u0E00-\u0E7F]+", re.UNICODE)
+_TOKEN_RE = re.compile(r"(?:[A-Za-z][A-Za-z0-9]*|\d+[A-Za-z][A-Za-z0-9]*)(?:[-_/][A-Za-z0-9]+)*|\d+(?:\.\d+)?%?|[\u0E00-\u0E7F]+", re.UNICODE)
 
 
 def tokenize(text: str) -> list[str]:
@@ -35,32 +37,38 @@ class BM25Index:
         self.avgdl = sum(self.lengths) / len(self.lengths) if self.lengths else 0.0
         self.df: Counter[str] = Counter()
         self.tf: list[Counter[str]] = []
-        for doc in self.docs:
+        self.postings: dict[str, list[int]] = defaultdict(list)
+        for i, doc in enumerate(self.docs):
             counts = Counter(doc)
             self.tf.append(counts)
             self.df.update(counts.keys())
+            for term in counts:
+                self.postings[term].append(i)
 
-    def search(self, query: str, top_k: int = 12) -> list[tuple[EvidenceChunk, float]]:
-        if not self.chunks:
+    def search(self, query: str, top_k: int = 12, *,
+               allowed_source_ids: set[str] | None = None) -> list[tuple[EvidenceChunk, float]]:
+        if not self.chunks or top_k <= 0:
             return []
-        q = tokenize(query)
+        scores: dict[int, float] = defaultdict(float)
         n = len(self.chunks)
-        scored: list[tuple[EvidenceChunk, float]] = []
-        for i, chunk in enumerate(self.chunks):
-            score = 0.0
-            dl = self.lengths[i] or 1
-            for term in q:
-                freq = self.tf[i].get(term, 0)
-                if not freq:
+        for term in set(tokenize(query)):
+            df = self.df.get(term, 0)
+            idf = math.log(1 + (n - df + 0.5) / (df + 0.5))
+            for i in self.postings.get(term, ()):
+                if allowed_source_ids is not None and self.chunks[i].source_id not in allowed_source_ids:
                     continue
-                df = self.df.get(term, 0)
-                idf = math.log(1 + (n - df + 0.5) / (df + 0.5))
+                freq = self.tf[i][term]
+                dl = self.lengths[i] or 1
                 denom = freq + self.k1 * (1 - self.b + self.b * dl / (self.avgdl or 1))
-                score += idf * (freq * (self.k1 + 1) / denom)
-            if score > 0:
-                scored.append((chunk, score))
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return scored[:top_k]
+                scores[i] += idf * (freq * (self.k1 + 1) / denom)
+        ordered = sorted(scores, key=lambda i: (-scores[i], i))[:top_k]
+        return [(self.chunks[i], scores[i]) for i in ordered]
+
+
+@lru_cache(maxsize=2)
+def _load_embedding_model(model_name: str):
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(model_name)
 
 
 class SemanticIndex:
@@ -74,24 +82,43 @@ class SemanticIndex:
         if not self.chunks:
             return
         try:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(model_name)
-            passages = [f"passage: {c.title}\n{c.heading}\n{c.text}" for c in self.chunks]
+            self._model = _load_embedding_model(model_name)
+            passages = [f"{c.title}\n{c.heading}\n{c.text}" for c in self.chunks]
+            # Encode every token window: a long Thai paragraph must not lose its tail.
+            tokenizer = self._model.tokenizer
+            limit = min(int(self._model.max_seq_length), 512) - 16
+            windows, self._owners = [], []
+            for i, passage in enumerate(passages):
+                ids = tokenizer.encode(passage, add_special_tokens=False)
+                for start in range(0, max(1, len(ids)), max(1, limit - 48)):
+                    windows.append("passage: " + tokenizer.decode(ids[start:start + limit], skip_special_tokens=True))
+                    self._owners.append(i)
+                    if start + limit >= len(ids):
+                        break
             self._vectors = self._model.encode(
-                passages, normalize_embeddings=True, show_progress_bar=False
+                windows, normalize_embeddings=True, show_progress_bar=False
             )
+            self._query_lock = threading.Lock()
             self.available = True
         except Exception as exc:
             self.error = type(exc).__name__
 
-    def search(self, query: str, top_k: int = 12) -> list[tuple[EvidenceChunk, float]]:
-        if not self.available or self._model is None or self._vectors is None:
+    def search(self, query: str, top_k: int = 12, *,
+               allowed_source_ids: set[str] | None = None) -> list[tuple[EvidenceChunk, float]]:
+        if not self.available or self._model is None or self._vectors is None or top_k <= 0:
             return []
         import numpy as np
-        q = self._model.encode([f"query: {query}"], normalize_embeddings=True)[0]
+        with self._query_lock:
+            q = self._model.encode([f"query: {query}"], normalize_embeddings=True)[0]
         scores = np.dot(self._vectors, q)
-        indices = np.argsort(scores)[::-1][:top_k]
-        return [(self.chunks[int(i)], float(scores[int(i)])) for i in indices]
+        best: dict[int, float] = {}
+        for row, score in enumerate(scores):
+            i = self._owners[row]
+            if allowed_source_ids is not None and self.chunks[i].source_id not in allowed_source_ids:
+                continue
+            best[i] = max(best.get(i, -1.0), float(score))
+        indices = sorted(best, key=lambda i: (-best[i], i))[:top_k]
+        return [(self.chunks[i], best[i]) for i in indices]
 
 
 def reciprocal_rank_fusion(
@@ -130,14 +157,13 @@ class HybridRetriever:
         candidate_k: int = 12,
         evidence_k: int = 6,
     ) -> list[EvidenceChunk]:
-        lexical = self.lexical.search(query, top_k=max(candidate_k * 2, candidate_k))
+        if not query.strip() or allowed_source_ids == set() or evidence_k <= 0:
+            return []
+        lexical = self.lexical.search(query, top_k=candidate_k, allowed_source_ids=allowed_source_ids)
         semantic = (
-            self.semantic.search(query, top_k=max(candidate_k * 2, candidate_k))
+            self.semantic.search(query, top_k=candidate_k, allowed_source_ids=allowed_source_ids)
             if self.semantic else []
         )
-        if allowed_source_ids is not None:
-            lexical = [(c, s) for c, s in lexical if c.source_id in allowed_source_ids]
-            semantic = [(c, s) for c, s in semantic if c.source_id in allowed_source_ids]
         rankings = [lexical]
         if semantic:
             rankings.append(semantic)

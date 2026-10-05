@@ -51,6 +51,8 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
 
 def _split_sections(content: str) -> list[tuple[str, str]]:
     current_heading = "Document"
+    heading_stack: list[tuple[int, str]] = []
+    fence: str | None = None
     buffer: list[str] = []
     sections: list[tuple[str, str]] = []
     def flush():
@@ -60,16 +62,27 @@ def _split_sections(content: str) -> list[tuple[str, str]]:
             sections.append((current_heading, body))
         buffer = []
     for line in content.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("```", "~~~")):
+            marker = stripped[:3]
+            fence = None if fence == marker else marker if fence is None else fence
+        if fence:
+            buffer.append(line)
+            continue
         m = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
         if m:
             flush()
-            current_heading = m.group(2).strip()
+            level = len(m.group(1))
+            while heading_stack and heading_stack[-1][0] >= level:
+                heading_stack.pop()
+            heading_stack.append((level, m.group(2).strip()))
+            current_heading = " > ".join(label for _, label in heading_stack)
         else:
             buffer.append(line)
     flush()
     return sections or [("Document", content.strip())]
 
-def _chunk_section(heading: str, body: str, max_chars: int = 3200) -> Iterable[str]:
+def _chunk_section(heading: str, body: str, max_chars: int = 1600) -> Iterable[str]:
     blocks = re.split(r"\n\s*\n", body)
     current: list[str] = []
     size = 0
@@ -81,7 +94,32 @@ def _chunk_section(heading: str, body: str, max_chars: int = 3200) -> Iterable[s
             yield "\n\n".join(current)
             current, size = [], 0
         if len(b) > max_chars and not current:
-            lines = b.splitlines()
+            table_lines = b.splitlines()
+            if (len(table_lines) >= 3 and "|" in table_lines[0]
+                    and re.fullmatch(r"[| :\-]+", table_lines[1])
+                    and "-" in table_lines[1]):
+                header = "\n".join(table_lines[:2])
+                budget = max_chars - len(header) - 1
+                if budget >= 160:
+                    rows: list[str] = []
+                    for row in table_lines[2:]:
+                        # Retain column names on every table fragment.
+                        parts = [row[i:i + budget] for i in range(0, max(1, len(row)), budget)]
+                        for part in parts:
+                            if rows and len("\n".join(rows + [part])) > budget:
+                                yield header + "\n" + "\n".join(rows)
+                                rows = []
+                            rows.append(part)
+                    if rows:
+                        yield header + "\n" + "\n".join(rows)
+                    continue
+            # Hard-bound unbroken lines too; keep overlap for boundary evidence.
+            lines = []
+            for line in b.splitlines():
+                while len(line) > max_chars:
+                    lines.append(line[:max_chars])
+                    line = line[max_chars - 160:]
+                lines.append(line)
             piece: list[str] = []
             psize = 0
             for line in lines:
@@ -99,6 +137,7 @@ def _chunk_section(heading: str, body: str, max_chars: int = 3200) -> Iterable[s
         yield "\n\n".join(current)
 
 def parse_markdown(source_id: str, text: str, *, updated_at: str = "", origin_url: str | None = None) -> ParsedDocument:
+    text = text.lstrip("\ufeff").replace("\r\n", "\n")
     raw_meta, content = parse_frontmatter(text)
     title = str(raw_meta.get("title") or "").strip()
     if not title:
@@ -124,7 +163,7 @@ def parse_markdown(source_id: str, text: str, *, updated_at: str = "", origin_ur
         effective_to=str(raw_meta.get("effective_to") or "") or None,
         supersedes=tuple(str(x) for x in supersedes_raw),
         aliases=tuple(str(x) for x in aliases_raw),
-        external_llm_allowed=bool(raw_meta.get("external_llm_allowed", False)),
+        external_llm_allowed=raw_meta.get("external_llm_allowed", False) is True,
         scope=str(raw_meta.get("scope") or "") or None,
         origin_url=origin_url,
         content_hash=content_hash,
@@ -133,7 +172,7 @@ def parse_markdown(source_id: str, text: str, *, updated_at: str = "", origin_ur
     ordinal = 0
     for heading, body in _split_sections(content):
         for piece in _chunk_section(heading, body):
-            chunk_id = f"{source_id}:{ordinal}"
+            chunk_id = f"{source_id}:{content_hash[:12]}:{ordinal}"
             chunks.append(EvidenceChunk(
                 chunk_id=chunk_id, source_id=source_id, title=title,
                 heading=heading, text=piece, ordinal=ordinal

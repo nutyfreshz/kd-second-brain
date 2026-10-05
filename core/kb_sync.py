@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import hashlib
+import json
 from pathlib import Path
 import threading
 from typing import Protocol
@@ -81,8 +82,10 @@ class KnowledgeManager:
             chunks = tuple(c for p in parsed for c in p.chunks)
             conflicts = tuple(_detect_authority_conflicts(sources))
             digest = hashlib.sha256(
-                "".join(sorted(s.content_hash for s in sources)).encode("utf-8")
+                json.dumps(sorted((s.source_id, s.content_hash, s.origin_url or "", s.updated_at) for s in sources)).encode("utf-8")
             ).hexdigest()[:16]
+            if self._snapshot and self._snapshot.snapshot_id == digest:
+                return self._snapshot
             snapshot = KnowledgeSnapshot(
                 snapshot_id=digest or "empty",
                 created_at=datetime.now(timezone.utc).isoformat(),

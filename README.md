@@ -11,7 +11,7 @@ Conversational RAG prototype for a small internal team, designed for Databricks 
 - Conversation ownership, source scoping, exact per-session cache, and duplicate `client_message_id` protection.
 - Gemini adapter as primary, OpenRouter free-model adapter as availability fallback.
 - Fail-closed provider behavior. Without a validated free LLM route, the app stays usable in evidence-only search mode.
-- Backend validation for citation IDs, verbatim evidence snippets, and critical numbers before an AI answer is shown.
+- Backend validation for nonempty claims, citation IDs, verbatim evidence, and supported numeric units before an AI answer is shown. Semantic entailment still requires live QA.
 - Databricks forwarded-header identity adapter. Local anonymous mode is opt-in only.
 
 ## Security boundary
@@ -71,7 +71,7 @@ The adapter is read-only and paginates through every child in the configured fol
 
 ## Databricks Apps
 
-`app.yaml` uses the Databricks-provided `DATABRICKS_APP_PORT` and starts Streamlit. Databricks user identity is read from forwarded headers in the Streamlit request context. Keep `ALLOW_ANONYMOUS_LOCAL=false` in Databricks.
+`app.yaml` starts Streamlit. Port binding and connectivity must be verified in the actual Databricks Apps runtime. Databricks user identity is read from forwarded headers in the Streamlit request context. Keep `ALLOW_ANONYMOUS_LOCAL=false` in Databricks.
 
 External connectivity still needs to be verified from the actual app runtime for Google Drive, Gemini/OpenRouter, and any model-download host used by local embeddings.
 
@@ -96,7 +96,7 @@ The UI only renders typed service responses. Provider output is normalized befor
 
 ## Tests
 
-Core tests do not call external APIs or download embedding models.
+Core tests do not call external APIs or download embedding models. The UI integration test uses Streamlit AppTest. NumPy is used by the fake semantic encoder test (also installed by sentence-transformers).
 
 ```bash
 python -m unittest discover -s tests -v
@@ -111,3 +111,28 @@ python -m unittest discover -s tests -v
 - HTTP/FastAPI adapter and custom React webchat.
 - Live 10-user concurrency/load acceptance.
 - Pinning exact dependency versions after Databricks runtime compatibility is tested.
+
+
+## RAG quality audit (2026-10-05)
+
+See [audit, measured results, trade-offs and live acceptance gate](docs/RAG_QUALITY_AUDIT.md).
+
+- Source filtering happens before candidate limits in both retrieval paths.
+- Sparse lexical search uses postings; long semantic passages use token windows.
+- Answer text is rendered from validated claims with numbered evidence references.
+- Citation IDs include document content hashes; conversation citations retain their original text after sync.
+- Complete turns are serialized per user for concurrent duplicate protection; answer cache is bounded and context/date/prompt-aware.
+- An unchanged sync reuses the active index.
+- Streamlit exposes all-source and explicit-source modes with an empty-selection guard.
+
+Contract v2: omit `selected_source_ids` / use `None` to search all authoritative documents; an empty tuple/list means no sources. This is a deliberate change from v1, where an empty selection meant all sources.
+
+```bash
+python benchmarks/retrieval_quality.py
+# Historical comparison, if that revision is available locally:
+python benchmarks/retrieval_quality.py --baseline 82f1fc4
+```
+
+The checked-in `app.yaml` currently opts into **paid OpenRouter UAT**. It is not a zero-cost deployment configuration. This audit preserves that pre-existing deployment choice; free fallback routes are now independently gated against paid models. Do not assume a model ID or quota is live-verified merely because its adapter is present.
+
+`.env.example` is a configuration reference. This app currently reads process environment variables; copying it to `.env` alone does not load those variables. Export them in your shell or configure them through Databricks Apps resources.
