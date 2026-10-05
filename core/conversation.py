@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 import re
 
 from core.schemas import Conversation
@@ -39,12 +40,14 @@ def resolve_effective_date(text: str, previous: str | None = None) -> date:
             if year >= 2400:
                 year -= 543
             return date(year, month, 1)
+    if re.search(r"วันนี้|ปัจจุบัน|ตอนนี้|\btoday\b|\bcurrent\b", text, re.I):
+        return datetime.now(ZoneInfo("Asia/Bangkok")).date()
     if previous:
         try:
             return date.fromisoformat(previous)
         except ValueError:
             pass
-    return date.today()
+    return datetime.now(ZoneInfo("Asia/Bangkok")).date()
 
 
 def retrieval_query(conversation: Conversation, current_text: str) -> tuple[str, str]:
@@ -52,8 +55,16 @@ def retrieval_query(conversation: Conversation, current_text: str) -> tuple[str,
     previous = user_messages[-3:]
     context = "\n".join(previous)
     compact = current_text.strip()
-    if len(compact) <= 90 and previous:
+    followup = bool(re.search(
+        r"^(แล้ว|ถ้า|กรณีนี้|อันนี้|อันนั้น|ต่อจาก|ขยายความ|สรุปอีก|what about|and |how about)|"
+        r"(ดังกล่าว|ข้างต้น|เมื่อกี้|that rule|this case)", compact, re.I))
+    pending = bool(conversation.messages and conversation.messages[-1].clarification_questions)
+    if previous and (followup or pending):
         query = "\n".join(previous[-2:] + [compact])
     else:
         query = compact
+    if not (followup or pending):
+        context = ""
+    if pending:
+        context += "\nคำถามที่รอคำตอบ: " + " / ".join(conversation.messages[-1].clarification_questions)
     return query, context

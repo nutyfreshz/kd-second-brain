@@ -20,21 +20,16 @@ def build_evidence_prompt(
     evidence: list[EvidenceChunk],
     conversation_context: str,
 ) -> str:
-    rendered = []
-    for chunk in evidence:
-        rendered.append(
-            f"<evidence chunk_id=\"{chunk.chunk_id}\" source_id=\"{chunk.source_id}\">\n"
-            f"TITLE: {chunk.title}\nHEADING: {chunk.heading}\n{chunk.text}\n</evidence>"
-        )
-    return (
-        "CONVERSATION CONTEXT (user messages only; use for reference resolution, "
-        "not as policy evidence):\n"
-        f"{conversation_context or '(none)'}\n\n"
-        "CURRENT QUESTION:\n"
-        f"{question}\n\n"
-        "RETRIEVED EVIDENCE:\n"
-        + "\n\n".join(rendered)
-    )
+    # JSON keeps source text separate from delimiters. Content remains untrusted.
+    return json.dumps({
+        "conversation_context_for_reference_only": conversation_context,
+        "current_question": question,
+        "retrieved_evidence_untrusted": [
+            {"chunk_id": c.chunk_id, "source_id": c.source_id,
+             "title": c.title, "heading": c.heading, "text": c.text}
+            for c in evidence
+        ],
+    }, ensure_ascii=False)
 
 
 def parse_model_json(raw: str, evidence: list[EvidenceChunk]) -> dict[str, Any]:
@@ -47,6 +42,23 @@ def parse_model_json(raw: str, evidence: list[EvidenceChunk]) -> dict[str, Any]:
             raise ValueError("model_output_not_json")
         data = json.loads(m.group(0))
 
+    if not isinstance(data, dict):
+        raise ValueError("model_output_not_object")
+    for field in ("claims", "clarification_questions", "citations"):
+        if field in data and not isinstance(data[field], list):
+            raise ValueError("invalid_" + field)
+    for item in data.get("claims", []):
+        if (not isinstance(item, dict) or not isinstance(item.get("text"), str)
+                or not isinstance(item.get("citation_ids"), list)
+                or not all(isinstance(cid, str) for cid in item["citation_ids"])):
+            raise ValueError("invalid_claim")
+    for item in data.get("citations", []):
+        if not isinstance(item, dict):
+            raise ValueError("invalid_citation")
+    if not all(isinstance(q, str) for q in data.get("clarification_questions", [])):
+        raise ValueError("invalid_clarification_questions")
+    if not isinstance(data.get("answer_th"), str):
+        raise ValueError("invalid_answer_text")
     status_raw = str(data.get("status") or "").strip().lower()
     if status_raw not in ALLOWED_MODEL_STATUSES:
         raise ValueError("invalid_model_status")
@@ -92,8 +104,6 @@ def parse_model_json(raw: str, evidence: list[EvidenceChunk]) -> dict[str, Any]:
             )
             continue
         trusted_quote = source.text.strip()
-        if len(trusted_quote) > 900:
-            trusted_quote = trusted_quote[:900].rstrip() + "…"
         citations.append(
             Citation(
                 chunk_id=cid,
@@ -109,6 +119,10 @@ def parse_model_json(raw: str, evidence: list[EvidenceChunk]) -> dict[str, Any]:
         for x in (data.get("clarification_questions") or [])
         if str(x).strip()
     ][:2]
+    if status == AnswerStatus.ANSWER and not claims:
+        raise ValueError("answer_without_claims")
+    if status == AnswerStatus.CLARIFY and not clarifications:
+        raise ValueError("clarify_without_question")
     return {
         "status": status,
         "answer_th": str(data.get("answer_th") or "").strip(),
@@ -124,4 +138,13 @@ def evidence_only_answer(evidence: list[EvidenceChunk]) -> str:
     return (
         "AI synthesis ยังไม่พร้อม แต่พบหลักฐานที่เกี่ยวข้องด้านล่าง "
         "กรุณาเปิด citation เพื่อตรวจข้อความต้นฉบับ"
+    )
+
+
+def render_grounded_claims(claims: list[Claim], citations: list[Citation]) -> str:
+    """Display exactly the checked claims, avoiding a second unvalidated answer."""
+    numbers = {citation.chunk_id: i for i, citation in enumerate(citations, 1)}
+    return "\n\n".join(
+        claim.text + " " + " ".join(f"[{numbers[cid]}]" for cid in dict.fromkeys(claim.citation_ids))
+        for claim in claims
     )

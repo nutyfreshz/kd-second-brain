@@ -94,7 +94,22 @@ sources = service.list_sources(identity)
 with st.sidebar:
     st.title("AIS Knowledge")
     st.caption(f"ผู้ใช้: {identity.username}")
-    st.caption(f"ค้นอัตโนมัติจากคลังความรู้ทั้งหมด · {len(sources)} sources")
+    st.caption(f"คลังความรู้ · {len(sources)} เอกสาร")
+    scope_all = st.checkbox("ค้นจากเอกสารทั้งหมด", value=True)
+    selected_ids = None
+    if not scope_all:
+        source_map = {source.source_id: source for source in sources}
+        selected_ids = tuple(st.multiselect(
+            "เลือกแหล่งข้อมูล", options=list(source_map),
+            format_func=lambda sid: f"{source_map[sid].title} · {source_map[sid].version}",
+        ))
+        if not selected_ids:
+            st.info("เลือกอย่างน้อยหนึ่งเอกสารเพื่อถามคำถาม")
+    with st.expander("เอกสารในคลัง"):
+        for source in sources:
+            st.write(f"{source.title} · {source.version}")
+            if source.effective_from or source.effective_to:
+                st.caption(f"มีผล: {source.effective_from or 'ไม่ระบุ'} ถึง {source.effective_to or 'ไม่ระบุ'}")
 
     if st.button("New chat", use_container_width=True):
         st.session_state.conversation_id = service.create_conversation(identity)
@@ -160,20 +175,25 @@ for msg in conversation.messages:
                 st.markdown(f"• {question}")
         if msg.role == "assistant" and msg.citations:
             with st.expander(f"หลักฐาน {len(msg.citations)} รายการ"):
-                for citation in msg.citations:
-                    st.markdown(f"**{citation.title} · {citation.heading}**")
+                for number, citation in enumerate(msg.citations, 1):
+                    st.markdown(f"**[{number}] {citation.title} · {citation.heading}**")
                     st.code(citation.quote, language=None)
 
-prompt = st.chat_input("ถามจากคลังความรู้...")
+prompt = st.chat_input("ถามจากคลังความรู้...", disabled=selected_ids == ())
 if prompt:
     client_message_id = str(uuid.uuid4())
-    response = service.send_message(
-        identity,
-        ChatRequest(
-            conversation_id=st.session_state.conversation_id,
-            client_message_id=client_message_id,
-            text=prompt,
-            selected_source_ids=(),
-        ),
-    )
+    with st.spinner("กำลังค้นหลักฐานและตรวจคำตอบ..."):
+        try:
+            service.send_message(
+                identity,
+                ChatRequest(
+                    conversation_id=st.session_state.conversation_id,
+                    client_message_id=client_message_id,
+                    text=prompt,
+                    selected_source_ids=selected_ids,
+                ),
+            )
+        except (ValueError, RuntimeError):
+            st.error("ส่งคำถามไม่สำเร็จ โปรดลองใหม่หรือลดความยาวคำถาม")
+            st.stop()
     st.rerun()
