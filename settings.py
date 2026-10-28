@@ -18,6 +18,7 @@ class Settings:
     max_concurrent_inference: int
     enable_semantic: bool
     embedding_model: str
+    knowledge_auto_sync_seconds: int
     gemini_api_key: str | None
     gemini_model: str
     gemini_free_verified: bool
@@ -42,6 +43,9 @@ class Settings:
             max_concurrent_inference=max(1, int(os.getenv("MAX_CONCURRENT_INFERENCE", "2"))),
             enable_semantic=_bool("ENABLE_SEMANTIC", True),
             embedding_model=os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small"),
+            knowledge_auto_sync_seconds=max(
+                0, int(os.getenv("KNOWLEDGE_AUTO_SYNC_SECONDS", "180"))
+            ),
             gemini_api_key=os.getenv("GEMINI_API_KEY") or None,
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.7-flash"),
             gemini_free_verified=_bool("GEMINI_FREE_VERIFIED", False),
