@@ -12,6 +12,25 @@ from core.schemas import EvidenceChunk
 
 _TOKEN_RE = re.compile(r"(?:[A-Za-z][A-Za-z0-9]*|\d+[A-Za-z][A-Za-z0-9]*)(?:[-_/][A-Za-z0-9]+)*|\d+(?:\.\d+)?%?|[\u0E00-\u0E7F]+", re.UNICODE)
 
+_OVERVIEW_RE = re.compile(
+    r"(สรุป|ภาพรวม|โดยรวม|ทั้งหมด|ทั้งคลัง|เปรียบเทียบ|ต่างกัน|"
+    r"คิดยังไง|ทำงานยังไง|อธิบาย.*รวม|overview|summary|summarize|"
+    r"compare|comparison|how .* work)",
+    re.I,
+)
+_GLOBAL_OVERVIEW_RE = re.compile(
+    r"(ทั้งหมด|ทั้งคลัง|ทุกเอกสาร|ทุก source|all sources|whole corpus|entire corpus)",
+    re.I,
+)
+
+
+def is_overview_query(query: str) -> bool:
+    return bool(_OVERVIEW_RE.search(query or ""))
+
+
+def is_global_overview_query(query: str) -> bool:
+    return bool(_GLOBAL_OVERVIEW_RE.search(query or ""))
+
 
 def tokenize(text: str) -> list[str]:
     tokens: list[str] = []
@@ -144,27 +163,181 @@ class HybridRetriever:
         self.chunks = list(chunks)
         self.lexical = BM25Index(self.chunks)
         self.semantic = SemanticIndex(self.chunks, model_name) if semantic_enabled else None
+        self.by_source: dict[str, list[EvidenceChunk]] = defaultdict(list)
+        for chunk in self.chunks:
+            self.by_source[chunk.source_id].append(chunk)
+        for group in self.by_source.values():
+            group.sort(key=lambda chunk: chunk.ordinal)
 
     @property
     def limited_mode(self) -> bool:
         return self.semantic is None or not self.semantic.available
+
+    def _allowed(self, source_id: str, allowed_source_ids: set[str] | None) -> bool:
+        return allowed_source_ids is None or source_id in allowed_source_ids
+
+    def _representative_chunks(
+        self,
+        allowed_source_ids: set[str] | None,
+        limit: int,
+    ) -> list[EvidenceChunk]:
+        source_ids = sorted(
+            sid for sid in self.by_source
+            if self._allowed(sid, allowed_source_ids)
+        )
+        out: list[EvidenceChunk] = []
+        for sid in source_ids:
+            group = self.by_source.get(sid) or []
+            if group:
+                out.append(group[0])
+            if len(out) >= limit:
+                break
+        return out
+
+    def _diversify(
+        self,
+        ranked: list[EvidenceChunk],
+        *,
+        limit: int,
+        max_per_source: int,
+    ) -> list[EvidenceChunk]:
+        if limit <= 0:
+            return []
+        groups: dict[str, list[EvidenceChunk]] = defaultdict(list)
+        source_order: list[str] = []
+        for chunk in ranked:
+            if chunk.source_id not in groups:
+                source_order.append(chunk.source_id)
+            groups[chunk.source_id].append(chunk)
+
+        out: list[EvidenceChunk] = []
+        for round_no in range(max_per_source):
+            added = False
+            for source_id in source_order:
+                group = groups[source_id]
+                if round_no < len(group):
+                    out.append(group[round_no])
+                    added = True
+                    if len(out) >= limit:
+                        return out
+            if not added:
+                break
+        return out
+
+    def _expand_neighbors(
+        self,
+        seeds: list[EvidenceChunk],
+        *,
+        allowed_source_ids: set[str] | None,
+        limit: int,
+    ) -> list[EvidenceChunk]:
+        out: list[EvidenceChunk] = []
+        seen: set[str] = set()
+
+        def add(chunk: EvidenceChunk, score: float | None = None):
+            if chunk.chunk_id in seen or len(out) >= limit:
+                return
+            if not self._allowed(chunk.source_id, allowed_source_ids):
+                return
+            seen.add(chunk.chunk_id)
+            if score is None:
+                out.append(chunk)
+            else:
+                out.append(EvidenceChunk(**{**chunk.__dict__, "score": score}))
+
+        for seed in seeds:
+            add(seed)
+        # Add adjacent context after all primary evidence so a neighbor cannot
+        # crowd out a stronger seed from another source.
+        for seed in seeds:
+            group = self.by_source.get(seed.source_id) or []
+            positions = {chunk.ordinal: chunk for chunk in group}
+            for ordinal in (seed.ordinal - 1, seed.ordinal + 1):
+                neighbor = positions.get(ordinal)
+                if neighbor is not None:
+                    add(neighbor, max(seed.score * 0.75, 0.0))
+        return out[:limit]
 
     def search(
         self,
         query: str,
         *,
         allowed_source_ids: set[str] | None = None,
-        candidate_k: int = 12,
-        evidence_k: int = 6,
+        candidate_k: int = 24,
+        evidence_k: int = 10,
     ) -> list[EvidenceChunk]:
         if not query.strip() or allowed_source_ids == set() or evidence_k <= 0:
             return []
-        lexical = self.lexical.search(query, top_k=candidate_k, allowed_source_ids=allowed_source_ids)
+
+        overview = is_overview_query(query)
+        global_overview = is_global_overview_query(query)
+        candidate_k = max(candidate_k, evidence_k * 2)
+
+        lexical = self.lexical.search(
+            query,
+            top_k=candidate_k,
+            allowed_source_ids=allowed_source_ids,
+        )
         semantic = (
-            self.semantic.search(query, top_k=candidate_k, allowed_source_ids=allowed_source_ids)
+            self.semantic.search(
+                query,
+                top_k=candidate_k,
+                allowed_source_ids=allowed_source_ids,
+            )
             if self.semantic else []
         )
         rankings = [lexical]
         if semantic:
             rankings.append(semantic)
-        return reciprocal_rank_fusion(rankings, top_k=evidence_k)
+        fused = reciprocal_rank_fusion(rankings, top_k=candidate_k)
+
+        if global_overview:
+            representatives = self._representative_chunks(
+                allowed_source_ids,
+                limit=max(evidence_k, 1),
+            )
+            combined: list[EvidenceChunk] = []
+            seen: set[str] = set()
+            for chunk in representatives + fused:
+                if chunk.chunk_id not in seen:
+                    combined.append(chunk)
+                    seen.add(chunk.chunk_id)
+            seeds = self._diversify(
+                combined,
+                limit=evidence_k,
+                max_per_source=1,
+            )
+        elif overview:
+            seeds = self._diversify(
+                fused,
+                limit=max(1, evidence_k - 2),
+                max_per_source=2,
+            )
+            # If a broad question has weak lexical matches, keep the corpus visible
+            # with a couple of source representatives instead of returning nothing.
+            if len(seeds) < min(4, evidence_k):
+                seen = {chunk.chunk_id for chunk in seeds}
+                for chunk in self._representative_chunks(
+                    allowed_source_ids,
+                    limit=evidence_k,
+                ):
+                    if chunk.chunk_id not in seen:
+                        seeds.append(chunk)
+                        seen.add(chunk.chunk_id)
+                    if len(seeds) >= min(4, evidence_k):
+                        break
+        else:
+            seeds = self._diversify(
+                fused,
+                limit=max(1, evidence_k - 2),
+                max_per_source=4,
+            )
+
+        if not seeds:
+            return []
+
+        return self._expand_neighbors(
+            seeds,
+            allowed_source_ids=allowed_source_ids,
+            limit=evidence_k,
+        )
