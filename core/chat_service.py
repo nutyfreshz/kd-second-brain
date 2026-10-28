@@ -306,3 +306,158 @@ class ChatService:
             response.status = AnswerStatus.VALIDATION_FAILED
             response.answer_th = (
                 "คำตอบ AI ไม่ผ่านรูปแบบตรวจสอบ จึงแสดงเฉพาะหลักฐานที่ค้นพบ"
+            )
+            return self._save_response(identity, request, response)
+
+        if parsed["status"] in {AnswerStatus.NOT_FOUND, AnswerStatus.CLARIFY}:
+            # These statuses must not bypass grounding via unvalidated answer prose.
+            response = ChatResponse(
+                message_id=str(uuid.uuid4()),
+                status=parsed["status"],
+                answer_th=("หลักฐานที่ค้นพบยังไม่เพียงพอสำหรับตอบคำถามนี้"
+                           if parsed["status"] == AnswerStatus.NOT_FOUND
+                           else "ขอข้อมูลเพิ่มเติมเพื่อเลือกคำตอบให้ตรงกับกรณีของคุณ"),
+                clarification_questions=parsed["clarification_questions"] if parsed["status"] == AnswerStatus.CLARIFY else [],
+                snapshot_id=snapshot.snapshot_id,
+                model_used=result.model,
+                limited_mode=snapshot.retriever.limited_mode,
+            )
+            self._remember(cache_key, response)
+            return self._save_response(identity, request, response)
+
+        validation = validate_answer(
+            claims=parsed["claims"],
+            citations=parsed["citations"],
+            evidence=evidence,
+            user_text=request.text,
+        )
+        if not validation.valid:
+            response = self._search_only_response(snapshot, evidence)
+            response.status = AnswerStatus.VALIDATION_FAILED
+            response.answer_th = (
+                "คำตอบ AI ไม่ผ่าน evidence validation จึงแสดงเฉพาะหลักฐานที่ค้นพบ"
+            )
+            return self._save_response(identity, request, response)
+
+        response = ChatResponse(
+            message_id=str(uuid.uuid4()),
+            status=parsed["status"],
+            answer_th=render_grounded_claims(parsed["claims"], parsed["citations"]),
+            claims=parsed["claims"],
+            citations=parsed["citations"],
+            clarification_questions=parsed["clarification_questions"],
+            snapshot_id=snapshot.snapshot_id,
+            model_used=result.model,
+            limited_mode=snapshot.retriever.limited_mode,
+        )
+        self._remember(cache_key, response)
+        return self._save_response(identity, request, response)
+
+    def _search_only_response(self, snapshot, evidence) -> ChatResponse:
+        citations = [
+            Citation(
+                chunk_id=c.chunk_id,
+                quote=c.text,
+                source_id=c.source_id,
+                title=c.title,
+                heading=c.heading,
+            )
+            for c in evidence
+        ]
+        return ChatResponse(
+            message_id=str(uuid.uuid4()),
+            status=AnswerStatus.SEARCH_ONLY,
+            answer_th=evidence_only_answer(evidence),
+            citations=citations,
+            snapshot_id=snapshot.snapshot_id,
+            model_used=None,
+            limited_mode=snapshot.retriever.limited_mode,
+        )
+
+    def _first_enabled_provider(self):
+        if self.primary and self.primary.enabled:
+            return self.primary
+        if self.fallback and self.fallback.enabled:
+            return self.fallback
+        return None
+
+    def _fallback_if_allowed(self, provider, error: ProviderError):
+        if not error.retryable:
+            return None
+        if provider is self.primary and self.fallback and self.fallback.enabled:
+            return self.fallback
+        return None
+
+    def _get_user_lock(self, user_id: str):
+        with self._lock:
+            bucket = int(hashlib.sha256(user_id.encode()).hexdigest()[:8], 16) % len(self._user_locks)
+            return self._user_locks[bucket]
+
+    def _remember(self, key, response):
+        # Availability failures may recover without a knowledge sync.
+        if response.status not in {AnswerStatus.ANSWER, AnswerStatus.CLARIFY, AnswerStatus.NOT_FOUND, AnswerStatus.CONFLICT}:
+            return
+        with self._lock:
+            self._cache[key] = deepcopy(response)
+            self._cache.move_to_end(key)
+            while len(self._cache) > self._cache_limit:
+                self._cache.popitem(last=False)
+
+    def _cache_key(self, *, conversation_id, question, selected, snapshot_id,
+                   context="", effective_date=""):
+        prompt_version = hashlib.sha256(self.system_prompt_path.read_bytes()).hexdigest()
+        model = (
+            self.primary.model_id
+            if self.primary and self.primary.enabled
+            else self.fallback.model_id
+            if self.fallback and self.fallback.enabled
+            else "search-only"
+        )
+        raw = json.dumps(
+            {
+                "conversation_id": conversation_id,
+                "question": question,
+                "context": context,
+                "effective_date": effective_date,
+                "selected": sorted(selected),
+                "snapshot": snapshot_id,
+                "prompt": prompt_version,
+                "model": model,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _save_response(self, identity, request, response: ChatResponse):
+        assistant_message = Message(
+            message_id=response.message_id,
+            role="assistant",
+            text=response.answer_th,
+            created_at=utc_now_iso(),
+            citations=response.citations,
+            status=response.status.value,
+            client_message_id=request.client_message_id,
+            selected_source_ids=request.selected_source_ids or (),
+            clarification_questions=response.clarification_questions,
+            claims=response.claims,
+            snapshot_id=response.snapshot_id,
+            model_used=response.model_used,
+            limited_mode=response.limited_mode,
+        )
+        self.store.add_message(request.conversation_id, identity, assistant_message)
+        return response
+
+    def _response_from_message(self, message: Message, cache_hit: bool):
+        return ChatResponse(
+            message_id=message.message_id,
+            status=AnswerStatus(message.status or AnswerStatus.ANSWER.value),
+            answer_th=message.text,
+            citations=message.citations,
+            clarification_questions=message.clarification_questions,
+            cache_hit=cache_hit,
+            claims=message.claims,
+            snapshot_id=message.snapshot_id,
+            model_used=message.model_used,
+            limited_mode=message.limited_mode,
+        )
