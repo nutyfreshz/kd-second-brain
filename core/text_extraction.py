@@ -209,6 +209,21 @@ def extract_text_from_bytes(
     if mime.startswith("text/") or suffix in _TEXT_EXTENSIONS:
         return _decode_text(data).strip()
 
+    # Generic fallback: do not require a known extension when the payload itself
+    # is clearly textual. This keeps ingestion format-agnostic while refusing
+    # typical binary blobs.
+    if data and b"\x00" not in data[:8192]:
+        decoded = _decode_text(data).strip()
+        if decoded:
+            sample = decoded[:12000]
+            acceptable = sum(
+                1 for ch in sample
+                if ch.isprintable() or ch in "\n\r\t"
+            )
+            replacement_ratio = sample.count("\ufffd") / max(1, len(sample))
+            if acceptable / max(1, len(sample)) >= 0.92 and replacement_ratio <= 0.01:
+                return decoded
+
     return None
 
 
