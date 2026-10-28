@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import threading
+import time
 from typing import Protocol
 
 from core.md_parser import ParsedDocument, is_active_status, is_effective, parse_markdown
@@ -74,7 +75,10 @@ class KnowledgeManager:
         self.semantic_enabled = semantic_enabled
         self.embedding_model = embedding_model
         self._lock = threading.Lock()
+        self._check_lock = threading.Lock()
         self._snapshot: KnowledgeSnapshot | None = None
+        self._source_fingerprint: str | None = None
+        self._last_manifest_check = 0.0
 
     @property
     def snapshot(self) -> KnowledgeSnapshot | None:
@@ -85,6 +89,9 @@ class KnowledgeManager:
             raise RuntimeError("knowledge_sync_already_running")
         try:
             raw_files = self.source.read_all()
+            self._source_fingerprint = getattr(
+                self.source, "last_manifest_fingerprint", self._source_fingerprint
+            )
             parsed: list[ParsedDocument] = []
             for raw in raw_files:
                 doc = parse_markdown(
@@ -121,6 +128,36 @@ class KnowledgeManager:
             return snapshot
         finally:
             self._lock.release()
+
+    def maybe_sync(self, min_interval_seconds: int = 180) -> KnowledgeSnapshot:
+        if self._snapshot is None:
+            return self.sync()
+        if min_interval_seconds <= 0:
+            return self._snapshot
+
+        now = time.monotonic()
+        with self._check_lock:
+            if now - self._last_manifest_check < min_interval_seconds:
+                return self._snapshot
+            self._last_manifest_check = now
+
+            fingerprint_fn = getattr(self.source, "manifest_fingerprint", None)
+            if not callable(fingerprint_fn):
+                return self._snapshot
+            try:
+                fingerprint = fingerprint_fn()
+            except Exception:
+                # Keep the last good snapshot when Drive metadata cannot be checked.
+                return self._snapshot
+
+            if fingerprint == self._source_fingerprint:
+                return self._snapshot
+
+            try:
+                return self.sync()
+            except RuntimeError:
+                # Another sync may already be building the next atomic snapshot.
+                return self._snapshot
 
 
 def _detect_authority_conflicts(sources: tuple[SourceMeta, ...]) -> list[str]:
