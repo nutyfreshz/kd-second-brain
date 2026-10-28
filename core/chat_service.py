@@ -183,7 +183,8 @@ class ChatService:
             return self._save_response(identity, request, cached)
 
         if is_global_overview_query(query):
-            candidate_k, evidence_k = 48, 24
+            evidence_k = min(40, max(24, len(selected)))
+            candidate_k = max(48, evidence_k * 2)
         elif is_overview_query(query):
             candidate_k, evidence_k = 32, 16
         else:
