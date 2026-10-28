@@ -4,13 +4,24 @@ import json
 from typing import Any
 
 from core.kb_sync import RawKnowledgeFile
+from core.text_extraction import extract_text_from_bytes, is_markdown_name
 
 
 _FOLDER_MIME = "application/vnd.google-apps.folder"
+_GOOGLE_DOC = "application/vnd.google-apps.document"
+_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
+_GOOGLE_SLIDE = "application/vnd.google-apps.presentation"
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 
 class GoogleDriveKnowledgeSource:
-    """Read-only adapter for one explicit published Drive tree."""
+    """Read-only recursive adapter for a Drive knowledge tree.
+
+    Every supported text-bearing file is normalized to text before indexing.
+    Unsupported binary files are skipped rather than indexed as garbage.
+    """
 
     def __init__(
         self,
@@ -24,6 +35,8 @@ class GoogleDriveKnowledgeSource:
         self.folder_id = folder_id
         self.service_account_json = service_account_json
         self.service_account_file = service_account_file
+        self.last_skipped: tuple[str, ...] = ()
+        self.last_errors: tuple[str, ...] = ()
 
     def _service(self):
         from google.oauth2 import service_account
@@ -69,11 +82,64 @@ class GoogleDriveKnowledgeSource:
             if not page_token:
                 return items
 
+    @staticmethod
+    def _bytes(result: Any) -> bytes:
+        if isinstance(result, bytes):
+            return result
+        if isinstance(result, str):
+            return result.encode("utf-8")
+        return bytes(result)
+
+    def _extract_item(self, service, item: dict[str, Any]) -> str | None:
+        file_id = item["id"]
+        name = item.get("name", file_id)
+        mime = item.get("mimeType", "")
+
+        if mime == _GOOGLE_DOC:
+            data = self._bytes(
+                service.files().export(
+                    fileId=file_id, mimeType="text/plain"
+                ).execute()
+            )
+            return extract_text_from_bytes(
+                name=name + ".txt", mime_type="text/plain", data=data
+            )
+
+        if mime == _GOOGLE_SHEET:
+            data = self._bytes(
+                service.files().export(
+                    fileId=file_id, mimeType=_XLSX_MIME
+                ).execute()
+            )
+            return extract_text_from_bytes(
+                name=name + ".xlsx", mime_type=_XLSX_MIME, data=data
+            )
+
+        if mime == _GOOGLE_SLIDE:
+            data = self._bytes(
+                service.files().export(
+                    fileId=file_id, mimeType=_PPTX_MIME
+                ).execute()
+            )
+            return extract_text_from_bytes(
+                name=name + ".pptx", mime_type=_PPTX_MIME, data=data
+            )
+
+        # Other Google Workspace-native binary types (Forms, Drawings, etc.) do
+        # not expose a stable text export through this adapter yet.
+        if mime.startswith("application/vnd.google-apps."):
+            return None
+
+        data = self._bytes(service.files().get_media(fileId=file_id).execute())
+        return extract_text_from_bytes(name=name, mime_type=mime, data=data)
+
     def read_all(self) -> list[RawKnowledgeFile]:
         service = self._service()
         out: list[RawKnowledgeFile] = []
         pending = [self.folder_id]
         visited: set[str] = set()
+        skipped: list[str] = []
+        errors: list[str] = []
 
         while pending:
             folder_id = pending.pop()
@@ -86,20 +152,28 @@ class GoogleDriveKnowledgeSource:
                     pending.append(item["id"])
                     continue
 
-                name = item.get("name", "")
-                mime = item.get("mimeType", "")
-                if not name.lower().endswith(".md") and mime != "text/markdown":
+                name = item.get("name", item.get("id", "source"))
+                try:
+                    text = self._extract_item(service, item)
+                except Exception as exc:
+                    errors.append(f"{name}:{type(exc).__name__}")
                     continue
 
-                data = service.files().get_media(fileId=item["id"]).execute()
-                text = data.decode("utf-8") if isinstance(data, bytes) else str(data)
+                if not text or not text.strip():
+                    skipped.append(name)
+                    continue
+
                 out.append(
                     RawKnowledgeFile(
                         source_id=item["id"],
                         text=text,
                         updated_at=item.get("modifiedTime", ""),
                         origin_url=item.get("webViewLink"),
+                        title_hint=name,
+                        use_frontmatter=is_markdown_name(name),
                     )
                 )
 
+        self.last_skipped = tuple(skipped)
+        self.last_errors = tuple(errors)
         return out
