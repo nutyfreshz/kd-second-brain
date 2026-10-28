@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -38,6 +39,7 @@ class GoogleDriveKnowledgeSource:
         self.service_account_file = service_account_file
         self.last_skipped: tuple[str, ...] = ()
         self.last_errors: tuple[str, ...] = ()
+        self.last_manifest_fingerprint: str | None = None
 
     def _service(self):
         from google.oauth2 import service_account
@@ -82,6 +84,40 @@ class GoogleDriveKnowledgeSource:
             page_token = result.get("nextPageToken")
             if not page_token:
                 return items
+
+    def _walk_tree(self, service):
+        pending = [self.folder_id]
+        visited: set[str] = set()
+        while pending:
+            folder_id = pending.pop()
+            if folder_id in visited:
+                continue
+            visited.add(folder_id)
+            for item in self._list_children(service, folder_id):
+                yield item
+                if item.get("mimeType") == _FOLDER_MIME:
+                    pending.append(item["id"])
+
+    @staticmethod
+    def _fingerprint_items(items: list[dict[str, Any]]) -> str:
+        payload = [
+            (
+                item.get("id", ""),
+                item.get("name", ""),
+                item.get("mimeType", ""),
+                item.get("modifiedTime", ""),
+            )
+            for item in items
+        ]
+        payload.sort()
+        return hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+
+    def manifest_fingerprint(self) -> str:
+        service = self._service()
+        items = list(self._walk_tree(service))
+        return self._fingerprint_items(items)
 
     @staticmethod
     def _bytes(result: Any) -> bytes:
@@ -137,44 +173,38 @@ class GoogleDriveKnowledgeSource:
     def read_all(self) -> list[RawKnowledgeFile]:
         service = self._service()
         out: list[RawKnowledgeFile] = []
-        pending = [self.folder_id]
-        visited: set[str] = set()
         skipped: list[str] = []
         errors: list[str] = []
+        manifest_items: list[dict[str, Any]] = []
 
-        while pending:
-            folder_id = pending.pop()
-            if folder_id in visited:
+        for item in self._walk_tree(service):
+            manifest_items.append(item)
+            if item.get("mimeType") == _FOLDER_MIME:
                 continue
-            visited.add(folder_id)
 
-            for item in self._list_children(service, folder_id):
-                if item.get("mimeType") == _FOLDER_MIME:
-                    pending.append(item["id"])
-                    continue
+            name = item.get("name", item.get("id", "source"))
+            try:
+                text = self._extract_item(service, item)
+            except Exception as exc:
+                errors.append(f"{name}:{type(exc).__name__}")
+                continue
 
-                name = item.get("name", item.get("id", "source"))
-                try:
-                    text = self._extract_item(service, item)
-                except Exception as exc:
-                    errors.append(f"{name}:{type(exc).__name__}")
-                    continue
+            if not text or not text.strip():
+                skipped.append(name)
+                continue
 
-                if not text or not text.strip():
-                    skipped.append(name)
-                    continue
-
-                out.append(
-                    RawKnowledgeFile(
-                        source_id=item["id"],
-                        text=text,
-                        updated_at=item.get("modifiedTime", ""),
-                        origin_url=item.get("webViewLink"),
-                        title_hint=name,
-                        use_frontmatter=is_markdown_name(name),
-                    )
+            out.append(
+                RawKnowledgeFile(
+                    source_id=item["id"],
+                    text=text,
+                    updated_at=item.get("modifiedTime", ""),
+                    origin_url=item.get("webViewLink"),
+                    title_hint=name,
+                    use_frontmatter=is_markdown_name(name),
                 )
+            )
 
         self.last_skipped = tuple(skipped)
         self.last_errors = tuple(errors)
+        self.last_manifest_fingerprint = self._fingerprint_items(manifest_items)
         return out
