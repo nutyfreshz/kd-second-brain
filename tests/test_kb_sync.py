@@ -6,6 +6,7 @@ from pathlib import Path
 from core.kb_sync import (
     KnowledgeManager,
     LocalKnowledgeSource,
+    RawKnowledgeFile,
     resolve_authoritative_sources,
 )
 
@@ -77,6 +78,49 @@ class KBSyncTests(unittest.TestCase):
             )
             self.assertEqual(conflicts, ())
             self.assertEqual(allowed, {"canonical.md"})
+
+    def test_manifest_check_skips_reindex_until_source_changes(self):
+        class FakeManifestSource:
+            def __init__(self):
+                self.version = "v1"
+                self.reads = 0
+                self.last_manifest_fingerprint = None
+
+            def manifest_fingerprint(self):
+                return self.version
+
+            def read_all(self):
+                self.reads += 1
+                self.last_manifest_fingerprint = self.version
+                return [
+                    RawKnowledgeFile(
+                        source_id="x.txt",
+                        text=f"rule {self.version}",
+                        updated_at=self.version,
+                        title_hint="x.txt",
+                        use_frontmatter=False,
+                    )
+                ]
+
+        source = FakeManifestSource()
+        manager = KnowledgeManager(
+            source,
+            semantic_enabled=False,
+            embedding_model="unused",
+        )
+        first = manager.sync()
+        self.assertEqual(source.reads, 1)
+
+        manager._last_manifest_check = 0.0
+        same = manager.maybe_sync(1)
+        self.assertEqual(source.reads, 1)
+        self.assertEqual(first.snapshot_id, same.snapshot_id)
+
+        source.version = "v2"
+        manager._last_manifest_check = 0.0
+        changed = manager.maybe_sync(1)
+        self.assertEqual(source.reads, 2)
+        self.assertNotEqual(first.snapshot_id, changed.snapshot_id)
 
 
 if __name__ == "__main__":
