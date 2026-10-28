@@ -94,17 +94,8 @@ sources = service.list_sources(identity)
 with st.sidebar:
     st.title("AIS Knowledge")
     st.caption(f"ผู้ใช้: {identity.username}")
-    st.caption(f"คลังความรู้ · {len(sources)} เอกสาร")
-    scope_all = st.checkbox("ค้นจากเอกสารทั้งหมด", value=True)
+    st.caption(f"ค้นอัตโนมัติจากคลังความรู้ทั้งหมด · {len(sources)} sources")
     selected_ids = None
-    if not scope_all:
-        source_map = {source.source_id: source for source in sources}
-        selected_ids = tuple(st.multiselect(
-            "เลือกแหล่งข้อมูล", options=list(source_map),
-            format_func=lambda sid: f"{source_map[sid].title} · {source_map[sid].version}",
-        ))
-        if not selected_ids:
-            st.info("เลือกอย่างน้อยหนึ่งเอกสารเพื่อถามคำถาม")
     with st.expander("เอกสารในคลัง"):
         for source in sources:
             st.write(f"{source.title} · {source.version}")
@@ -161,7 +152,7 @@ st.caption("ถาม ตอบ เปรียบเทียบ และเ�
 
 if not sources:
     st.info(
-        "ยังไม่มีเอกสาร published ที่พร้อมใช้ กรุณาเพิ่ม reviewed MD ใน source "
+        "ยังไม่มี source ที่มี text พร้อมใช้ กรุณาเพิ่มเอกสารใน Google Drive "
         "หรือให้ Admin ตรวจ Google Drive configuration"
     )
     st.stop()
@@ -179,7 +170,7 @@ for msg in conversation.messages:
                     st.markdown(f"**[{number}] {citation.title} · {citation.heading}**")
                     st.code(citation.quote, language=None)
 
-prompt = st.chat_input("ถามจากคลังความรู้...", disabled=selected_ids == ())
+prompt = st.chat_input("ถามจากคลังความรู้...")
 if prompt:
     client_message_id = str(uuid.uuid4())
     with st.spinner("กำลังค้นหลักฐานและตรวจคำตอบ..."):
