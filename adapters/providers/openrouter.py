@@ -6,10 +6,7 @@ from adapters.providers.http_json import post_json
 
 class OpenRouterProvider:
     ALLOWED_MODELS = {
-        "qwen/qwen3.5-9b",
-        "google/gemini-2.5-flash-lite",
-        "openai/gpt-oss-20b:free",
-        "openai/gpt-oss-120b:free",
+        "openai/gpt-6-luna",
     }
 
     def __init__(
@@ -49,9 +46,7 @@ class OpenRouterProvider:
                 "OpenRouter is not configured.", code="not_configured", retryable=False
             )
         payload = {
-            "temperature": 0.1,
-            "max_tokens": 2400,
-            "provider": {"require_parameters": True},
+            "max_tokens": 1600,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -100,10 +95,7 @@ class OpenRouterProvider:
                 },
             },
         }
-        if self.fallback_models:
-            payload["models"] = [self.model, *self.fallback_models]
-        else:
-            payload["model"] = self.model
+        payload["model"] = self.model
         data = post_json(
             "https://openrouter.ai/api/v1/chat/completions",
             payload,
