@@ -45,6 +45,7 @@ class ChatService:
         max_concurrent_inference: int = 2,
         system_prompt_path: str = "prompts/SYSTEM_PROMPT_TH.md",
         allow_external_llm_for_all_evidence: bool = False,
+        knowledge_auto_sync_seconds: int = 0,
     ):
         self.knowledge = knowledge
         self.store = store
@@ -57,6 +58,7 @@ class ChatService:
         self._cache_limit = 256
         self.system_prompt_path = Path(system_prompt_path)
         self.allow_external_llm_for_all_evidence = allow_external_llm_for_all_evidence
+        self.knowledge_auto_sync_seconds = max(0, knowledge_auto_sync_seconds)
 
     def create_conversation(self, identity: Identity) -> str:
         return self.store.create(identity).conversation_id
@@ -112,9 +114,7 @@ class ChatService:
         )
         self.store.add_message(request.conversation_id, identity, user_message)
 
-        snapshot = self.knowledge.snapshot
-        if snapshot is None:
-            snapshot = self.knowledge.sync()
+        snapshot = self.knowledge.maybe_sync(self.knowledge_auto_sync_seconds)
 
         if not snapshot.sources:
             response = ChatResponse(
