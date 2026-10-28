@@ -4,10 +4,10 @@ Conversational RAG prototype for a small internal team, designed for Databricks 
 
 ## Current implementation
 
-- Streamlit chat UI with source selection and citation viewer.
+- Streamlit chat UI that searches all authorized knowledge automatically, with citation viewer.
 - RAG core is framework-independent. `core/` does not import Streamlit.
-- Atomic knowledge snapshots from either reviewed local Markdown or Google Drive.
-- Thai-friendly lexical BM25 retrieval plus optional local multilingual semantic retrieval with rank fusion.
+- Atomic knowledge snapshots from Google Drive or local text-bearing files; Markdown is optional.
+- Thai-friendly lexical BM25 plus optional multilingual semantic retrieval, rank fusion, source-aware diversification and adjacent-context expansion.
 - Conversation ownership, source scoping, exact per-session cache, and duplicate `client_message_id` protection.
 - Gemini adapter as primary, OpenRouter free-model adapter as availability fallback.
 - Fail-closed provider behavior. Without a validated free LLM route, the app stays usable in evidence-only search mode.
@@ -20,7 +20,7 @@ This repository is public. **Do not commit AIS/internal Markdown, API keys, Goog
 
 Use one of these at runtime:
 
-1. Google Drive `published` folder through a read-only Google identity.
+1. A Google Drive knowledge tree through a read-only Google identity.
 2. A reviewed local bundle mounted/deployed into `knowledge/published/`.
 
 The local knowledge directory is intentionally empty in Git.
@@ -83,8 +83,9 @@ Streamlit UI
 ChatService
     ├── ConversationStore
     ├── KnowledgeManager
-    │     ├── Markdown parser
-    │     └── Hybrid Retriever
+    │     ├── Multi-format text extraction / normalization
+    │     ├── Section-aware parser
+    │     └── Source-aware Hybrid Retriever
     ├── Answer Policy
     ├── Provider Chain
     │     ├── Gemini
@@ -136,3 +137,9 @@ python benchmarks/retrieval_quality.py --baseline 82f1fc4
 The checked-in `app.yaml` currently opts into **paid OpenRouter UAT**. It is not a zero-cost deployment configuration. This audit preserves that pre-existing deployment choice; free fallback routes are now independently gated against paid models. Do not assume a model ID or quota is live-verified merely because its adapter is present.
 
 `.env.example` is a configuration reference. This app currently reads process environment variables; copying it to `.env` alone does not load those variables. Export them in your shell or configure them through Databricks Apps resources.
+
+## NotebookLM-like processing
+
+See [NotebookLM-like processing architecture](docs/NOTEBOOKLM_LIKE_ARCHITECTURE.md).
+
+The target is observable behavior rather than a claim about Google's private implementation: source-grounded chat, cross-source synthesis, conversation-aware follow-ups, inspectable citations and broad text-bearing source ingestion.
