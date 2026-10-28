@@ -9,6 +9,7 @@ import threading
 from typing import Protocol
 
 from core.md_parser import ParsedDocument, is_active_status, is_effective, parse_markdown
+from core.text_extraction import extract_text_from_path, is_markdown_name
 from core.retrieval import HybridRetriever
 from core.schemas import EvidenceChunk, SourceMeta
 
@@ -19,6 +20,8 @@ class RawKnowledgeFile:
     text: str
     updated_at: str
     origin_url: str | None = None
+    title_hint: str | None = None
+    use_frontmatter: bool = True
 
 
 class KnowledgeSource(Protocol):
@@ -33,14 +36,23 @@ class LocalKnowledgeSource:
         if not self.directory.exists():
             return []
         files: list[RawKnowledgeFile] = []
-        for path in sorted(self.directory.glob("*.md")):
+        for path in sorted(p for p in self.directory.rglob("*") if p.is_file()):
+            try:
+                text = extract_text_from_path(path)
+            except Exception:
+                continue
+            if not text or not text.strip():
+                continue
             stat = path.stat()
+            rel = str(path.relative_to(self.directory)).replace("\\", "/")
             files.append(
                 RawKnowledgeFile(
-                    source_id=path.name,
-                    text=path.read_text(encoding="utf-8"),
+                    source_id=rel,
+                    text=text,
                     updated_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
                     origin_url=None,
+                    title_hint=path.name,
+                    use_frontmatter=is_markdown_name(path.name),
                 )
             )
         return files
@@ -75,7 +87,14 @@ class KnowledgeManager:
             raw_files = self.source.read_all()
             parsed: list[ParsedDocument] = []
             for raw in raw_files:
-                doc = parse_markdown(raw.source_id, raw.text, updated_at=raw.updated_at, origin_url=raw.origin_url)
+                doc = parse_markdown(
+                    raw.source_id,
+                    raw.text,
+                    updated_at=raw.updated_at,
+                    origin_url=raw.origin_url,
+                    title_hint=raw.title_hint,
+                    use_frontmatter=raw.use_frontmatter,
+                )
                 if is_active_status(doc.meta.status):
                     parsed.append(doc)
             sources = tuple(p.meta for p in parsed)
