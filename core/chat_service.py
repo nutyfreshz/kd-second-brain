@@ -256,6 +256,14 @@ class ChatService:
                         "กรุณาตรวจ Secret และสิทธิ์ของ API key"
                     )
                     return self._save_response(identity, request, response)
+                if exc.code == "http_400":
+                    response = self._search_only_response(snapshot, evidence)
+                    response.status = AnswerStatus.PROVIDER_UNAVAILABLE
+                    response.answer_th = (
+                        "AI provider ปฏิเสธรูปแบบ request (HTTP 400) "
+                        "แสดงว่า model route ใช้ได้แต่ request contract ยังไม่เข้ากัน"
+                    )
+                    return self._save_response(identity, request, response)
                 if exc.code == "http_404":
                     response = self._search_only_response(snapshot, evidence)
                     response.status = AnswerStatus.PROVIDER_UNAVAILABLE
@@ -275,7 +283,7 @@ class ChatService:
                     response = self._search_only_response(snapshot, evidence)
                     response.status = AnswerStatus.QUOTA_EXHAUSTED
                     response.answer_th = (
-                        "โควตา AI ฟรีไม่พร้อมใช้งานขณะนี้ แต่ยังค้นหลักฐานได้"
+                        "AI provider ถูก rate limit / quota limit ชั่วคราว แต่ยังค้นหลักฐานได้"
                     )
                     return self._save_response(identity, request, response)
                 fallback = self._fallback_if_allowed(provider, exc)
