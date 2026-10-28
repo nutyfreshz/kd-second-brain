@@ -12,6 +12,7 @@ _GOOGLE_DOC = "application/vnd.google-apps.document"
 _GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
 _GOOGLE_SLIDE = "application/vnd.google-apps.presentation"
 
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
@@ -98,11 +99,11 @@ class GoogleDriveKnowledgeSource:
         if mime == _GOOGLE_DOC:
             data = self._bytes(
                 service.files().export(
-                    fileId=file_id, mimeType="text/plain"
+                    fileId=file_id, mimeType=_DOCX_MIME
                 ).execute()
             )
             return extract_text_from_bytes(
-                name=name + ".txt", mime_type="text/plain", data=data
+                name=name + ".docx", mime_type=_DOCX_MIME, data=data
             )
 
         if mime == _GOOGLE_SHEET:
