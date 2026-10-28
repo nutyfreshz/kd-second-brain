@@ -7,16 +7,13 @@ env:
     valueFrom: openrouter_api_key
 
   - name: OPENROUTER_MODEL
-    value: "google/gemini-2.5-flash-lite"
+    value: "openai/gpt-6-luna"
 
   - name: OPENROUTER_FREE_VERIFIED
     value: "false"
 
   - name: OPENROUTER_PAID_ALLOWED
     value: "true"
-
-  - name: OPENROUTER_FALLBACK_MODELS
-    value: "qwen/qwen3.5-9b"
 
   - name: KNOWLEDGE_SOURCE
     value: "drive"
