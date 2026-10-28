@@ -142,8 +142,13 @@ with st.sidebar:
             )
             st.write(f"Auto-sync check: {settings.knowledge_auto_sync_seconds}s")
             if snapshot:
-                st.write(f"Published sources: {len(snapshot.sources)}")
+                st.write(f"Indexed sources: {len(snapshot.sources)}")
                 st.write(f"Authority conflicts: {len(snapshot.conflicts)}")
+                source_adapter = service.knowledge.source
+                skipped = getattr(source_adapter, "last_skipped", ())
+                ingest_errors = getattr(source_adapter, "last_errors", ())
+                st.write(f"Skipped unsupported/empty: {len(skipped)}")
+                st.write(f"Ingestion errors: {len(ingest_errors)}")
 
     if snapshot:
         st.caption(f"Snapshot: {snapshot.snapshot_id}")
