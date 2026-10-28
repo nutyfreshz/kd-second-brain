@@ -237,10 +237,18 @@ class ServiceQualityTests(unittest.TestCase):
 
 
 class CostGuardTests(unittest.TestCase):
-    def test_free_route_cannot_fallback_to_paid(self):
-        p=OpenRouterProvider('key','openai/gpt-oss-120b:free',free_verified=True, fallback_models=('google/gemini-2.5-flash-lite','openai/gpt-oss-20b:free'))
-        self.assertEqual(p.fallback_models, ('openai/gpt-oss-20b:free',))
+    def test_unapproved_or_obsolete_route_is_disabled(self):
+        p=OpenRouterProvider(
+            'key',
+            'google/gemini-2.5-flash-lite',
+            paid_allowed=True,
+            fallback_models=('openai/gpt-6-luna',),
+        )
+        self.assertFalse(p.enabled)
+        self.assertEqual(p.fallback_models, ('openai/gpt-6-luna',))
 
-    def test_paid_route_cannot_fallback_to_unverified_free(self):
-        p=OpenRouterProvider('key','google/gemini-2.5-flash-lite',paid_allowed=True, fallback_models=('openai/gpt-oss-20b:free',))
-        self.assertEqual(p.fallback_models, ())
+    def test_current_paid_route_requires_paid_gate(self):
+        disabled=OpenRouterProvider('key','openai/gpt-6-luna',paid_allowed=False)
+        enabled=OpenRouterProvider('key','openai/gpt-6-luna',paid_allowed=True)
+        self.assertFalse(disabled.enabled)
+        self.assertTrue(enabled.enabled)
