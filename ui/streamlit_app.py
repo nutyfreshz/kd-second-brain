@@ -68,6 +68,11 @@ def build_service() -> tuple[Settings, ChatService]:
             settings.knowledge_source == "drive"
             and settings.drive_external_llm_allow_all
         ),
+        knowledge_auto_sync_seconds=(
+            settings.knowledge_auto_sync_seconds
+            if settings.knowledge_source == "drive"
+            else 0
+        ),
     )
     return settings, service
 
@@ -135,6 +140,7 @@ with st.sidebar:
                 "Drive external LLM policy: "
                 + ("allow all synced knowledge" if settings.drive_external_llm_allow_all else "per-document")
             )
+            st.write(f"Auto-sync check: {settings.knowledge_auto_sync_seconds}s")
             if snapshot:
                 st.write(f"Published sources: {len(snapshot.sources)}")
                 st.write(f"Authority conflicts: {len(snapshot.conflicts)}")
