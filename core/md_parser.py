@@ -136,11 +136,7 @@ def _chunk_section(heading: str, body: str, max_chars: int = 1600) -> Iterable[s
     if current:
         yield "\n\n".join(current)
 
-def parse_markdown(source_id: str, text: str, *, updated_at: str = "", origin_url: str | None = None) -> ParsedDocument:
-    text = text.lstrip("\ufeff").replace("\r\n", "\n")
-    raw_meta, content = parse_frontmatter(text)
-    title = str(raw_meta.get("title") or "").strip()
-    if not title:
+def parse_markdown(\n    source_id: str,\n    text: str,\n    *,\n    updated_at: str = "",\n    origin_url: str | None = None,\n    title_hint: str | None = None,\n    use_frontmatter: bool = True,\n) -> ParsedDocument:\n    text = text.lstrip("\ufeff").replace("\r\n", "\n")\n    raw_meta, content = parse_frontmatter(text) if use_frontmatter else ({}, text.strip())\n    title = str(raw_meta.get("title") or title_hint or "").strip()\n    if not title:
         for line in content.splitlines():
             if line.startswith("# "):
                 title = line[2:].strip()
