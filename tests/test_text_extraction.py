@@ -102,6 +102,22 @@ class TextExtractionTests(unittest.TestCase):
             self.assertTrue(by_id["a.md"].use_frontmatter)
             self.assertFalse(by_id["nested/b.txt"].use_frontmatter)
 
+    def test_unknown_extension_is_ingested_when_payload_is_textual(self):
+        text = extract_text_from_bytes(
+            name="policy.custom",
+            mime_type="application/octet-stream",
+            data="กฎ incentive แบบข้อความธรรมดา".encode("utf-8"),
+        )
+        self.assertIn("incentive", text)
+
+    def test_binary_payload_is_not_indexed_as_text(self):
+        text = extract_text_from_bytes(
+            name="blob.bin",
+            mime_type="application/octet-stream",
+            data=b"\x00\x01\x02\x03PK\x04\x05",
+        )
+        self.assertIsNone(text)
+
 
 if __name__ == "__main__":
     unittest.main()
